@@ -1,0 +1,57 @@
+# ==============================================================================
+# Kubernetes Deployment & Service cho Drift Detection Web API (apps/drift_api.py)
+# Tạo ra service 'drift-api-service' ở namespace default, port 8003
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: drift-api
+  namespace: default
+  labels:
+    app: drift-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: drift-api
+  template:
+    metadata:
+      labels:
+        app: drift-api
+    spec:
+      containers:
+        - name: drift-api
+          image: nhannguyen2201/drift-api:0.0.1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8003
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          env:
+            - name: REDIS_HOST
+              value: "34.143.213.21"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: TRINO_HOST
+              value: "34.143.213.21"
+            - name: TRINO_PORT
+              value: "8080"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: drift-api-service
+  namespace: default
+  labels:
+    app: drift-api
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8003
+      targetPort: 8003
+      protocol: TCP
+      name: http
+  selector:
+    app: drift-api

@@ -1,0 +1,43 @@
+# ==============================================================================
+# AgentgatewayBackend + HTTPRoute cho llm-d Inference Routing
+# Kết nối AgentGateway với InferencePool của llm-d để phục vụ LLM requests
+# ==============================================================================
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: qwen-inferencepool
+  namespace: agentgateway-system
+spec:
+  ai:
+    provider:
+      custom:
+        backendRef:
+          group: inference.networking.k8s.io
+          kind: InferencePool
+          name: vllm-qwen3-0.6b
+        model: Qwen/Qwen3-0.6B
+        formats:
+        - type: Completions
+          path: /v1/chat/completions
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: llm-route
+  namespace: agentgateway-system
+spec:
+  parentRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: inference-gateway
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /v1/chat/completions
+    backendRefs:
+    - group: agentgateway.dev
+      kind: AgentgatewayBackend
+      name: qwen-inferencepool
+    timeouts:
+      request: 300s

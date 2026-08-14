@@ -1,0 +1,109 @@
+// ==============================================================================
+// Jenkins Declarative Pipeline cho E-Commerce MLOps & AI Agent System
+// Quy trình tự động hóa: Checkout ➔ Testing ➔ Build Image ➔ Deploy K8s
+// ==============================================================================
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_USER     = 'nhannguyen2201'
+        DOCKER_CREDS_ID = 'dockerhub-credentials-id'
+        KUBECONFIG_ID   = 'k8s-kubeconfig-id'
+    }
+
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        disableConcurrentBuilds()
+    }
+
+    stages {
+        // ----------------------------------------------------------------------
+        // GIAI ĐOẠN 1: TẢI CODE MỚI TỪ GIT REPOSITORY
+        // ----------------------------------------------------------------------
+        stage('1. Checkout Source Code') {
+            steps {
+                echo '📥 Đang kéo mã nguồn mới nhất từ Git Repository...'
+                checkout scm
+            }
+        }
+
+        // ----------------------------------------------------------------------
+        // GIAI ĐOẠN 2: KÍCH HOẠT KIỂM THỬ MÃ NGUỒN TỰ ĐỘNG (PYTEST)
+        // ----------------------------------------------------------------------
+        stage('2. Run Pytest Unit Test Suite') {
+            steps {
+                echo '🧪 Đang chạy 31 bài Unit Tests kiểm tra chất lượng phần mềm...'
+                sh '''
+                    export PYTHONPATH=.
+                    pytest tests/unit/ -v --cov=apps --cov-report=term-missing
+                '''
+            }
+        }
+
+        // ----------------------------------------------------------------------
+        // GIAI ĐOẠN 3: ĐÓNG GÓI DOCKER IMAGES CHO CÁC SERVICES
+        // ----------------------------------------------------------------------
+        stage('3. Build Docker Images') {
+            steps {
+                echo '🐳 Đang đóng gói 4 Docker Images cho Feature API, Drift API & MCP Servers...'
+                sh '''
+                    docker build -t ${DOCKER_USER}/feature-api:latest -t ${DOCKER_USER}/feature-api:${BUILD_NUMBER} -f apps/feature-api/Dockerfile .
+                    docker build -t ${DOCKER_USER}/drift-api:latest   -t ${DOCKER_USER}/drift-api:${BUILD_NUMBER}   -f apps/drift-api/Dockerfile .
+                    docker build -t ${DOCKER_USER}/ecom-mcp:latest    -t ${DOCKER_USER}/ecom-mcp:${BUILD_NUMBER}    -f ecom-mcp/Dockerfile ./ecom-mcp
+                    docker build -t ${DOCKER_USER}/drift-mcp:latest   -t ${DOCKER_USER}/drift-mcp:${BUILD_NUMBER}   -f drift-mcp/Dockerfile ./drift-mcp
+                '''
+            }
+        }
+
+        // ----------------------------------------------------------------------
+        // GIAI ĐOẠN 4: ĐẨY DOCKER IMAGES LÊN DOCKER HUB REGISTRY
+        // ----------------------------------------------------------------------
+        stage('4. Push Docker Images to Docker Hub') {
+            steps {
+                echo '🚀 Đang đẩy Docker Images lên kho chứa Docker Hub...'
+                withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDS_ID}", usernameVariable: 'DOCKER_USER_VAR', passwordVariable: 'DOCKER_PASS_VAR')]) {
+                    sh '''
+                        echo "$DOCKER_PASS_VAR" | docker login -u "$DOCKER_USER_VAR" --password-stdin
+                        docker push ${DOCKER_USER}/feature-api:latest
+                        docker push ${DOCKER_USER}/feature-api:${BUILD_NUMBER}
+                        docker push ${DOCKER_USER}/drift-api:latest
+                        docker push ${DOCKER_USER}/drift-api:${BUILD_NUMBER}
+                        docker push ${DOCKER_USER}/ecom-mcp:latest
+                        docker push ${DOCKER_USER}/ecom-mcp:${BUILD_NUMBER}
+                        docker push ${DOCKER_USER}/drift-mcp:latest
+                        docker push ${DOCKER_USER}/drift-mcp:${BUILD_NUMBER}
+                    '''
+                }
+            }
+        }
+
+        // ----------------------------------------------------------------------
+        // GIAI ĐOẠN 5: TRIỂN KHAI TỰ ĐỘNG LÊN KUBERNETES CLUSTER (CD)
+        // ----------------------------------------------------------------------
+        stage('5. Zero-Downtime Deployment to Kubernetes') {
+            steps {
+                echo '☸️ Đang thực hiện Rollout Restart cập nhật hệ thống trên Kubernetes...'
+                sh '''
+                    kubectl apply -f deployments/backend/
+                    kubectl apply -f deployments/nginx_ingress.yaml
+                    kubectl rollout restart deployment/feature-api -n default
+                    kubectl rollout restart deployment/drift-api -n default
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            echo '🧹 Đang dọn dẹp các tài nguyên tạm trên Agent...'
+            cleanWs()
+        }
+        success {
+            echo '🎉 TOÀN BỘ QUY TRÌNH CI/CD CHẠY THÀNH CÔNG RẠNG RỠ!'
+        }
+        failure {
+            echo '❌ QUY TRÌNH CI/CD BỊ THẤT BẠI - XIN KIỂM TRA LẠI MÃ NGUỒN HOẶC TEST SUITE!'
+        }
+    }
+}

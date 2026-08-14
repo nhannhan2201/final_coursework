@@ -1,0 +1,20 @@
+# ==============================================================================
+# KMCP MCPServer CRD cho Drift Detection MCP Tool
+# Deploy FastMCP server dưới dạng Kubernetes-native MCP Server
+# ==============================================================================
+apiVersion: kagent.dev/v1alpha1
+kind: MCPServer
+metadata:
+  name: drift-mcp
+  namespace: kagent
+spec:
+  transportType: http
+  deployment:
+    image: nhannguyen2201/drift-mcp:0.0.1
+    imagePullPolicy: IfNotPresent
+    port: 8000
+    env:
+      DRIFT_API_URL: "http://drift-api-service.default.svc.cluster.local:8003"
+  httpTransport:
+    targetPort: 8000
+    path: /mcp

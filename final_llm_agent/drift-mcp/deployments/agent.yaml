@@ -1,0 +1,34 @@
+# ==============================================================================
+# KAgent Agent CRD cho Drift Detection Agent
+# Agent sử dụng drift-mcp MCP Server tool để giám sát trôi lệch dữ liệu
+# ==============================================================================
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: drift-agent
+  namespace: kagent
+spec:
+  description: >-
+    Real-Time Feature Drift Monitoring Agent. Sử dụng Drift Detection MCP tool
+    để phân tích trôi lệch dữ liệu thời gian thực giữa Redis Streaming
+    và Baseline Delta Lake bằng thuật toán KS-test và PSI score.
+  type: Declarative
+  declarative:
+    # modelConfig: groq-model-config (Cloud API fallback)
+    modelConfig: llm-d-model-config
+    stream: true
+    systemMessage: >-
+      Bạn là chuyên gia giám sát chất lượng dữ liệu (Data Quality Monitor).
+      Hãy sử dụng các MCP tools được cung cấp để phân tích trôi lệch dữ liệu
+      (Data Drift) giữa luồng streaming thời gian thực và baseline từ Delta Lake.
+      Giải thích rõ ràng kết quả KS-test, PSI score và đề xuất hành động khắc phục
+      nếu phát hiện drift.
+    tools:
+      - type: McpServer
+        mcpServer:
+          apiGroup: kagent.dev
+          kind: MCPServer
+          name: drift-mcp
+          namespace: kagent
+          toolNames:
+            - detect_feature_drift

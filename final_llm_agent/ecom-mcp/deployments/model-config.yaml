@@ -1,0 +1,34 @@
+# ==============================================================================
+# ModelConfig CRD #1: Groq Cloud API (cho thử nghiệm nhanh)
+# ==============================================================================
+apiVersion: kagent.dev/v1alpha2
+kind: ModelConfig
+metadata:
+  name: groq-model-config
+  namespace: kagent
+spec:
+  provider: OpenAI
+  model: llama-3.1-8b-instant
+  apiKeySecret: groq-secret
+  apiKeySecretKey: api-key
+  openAI:
+    baseUrl: https://api.groq.com/openai/v1
+---
+# ==============================================================================
+# ModelConfig CRD #2: llm-d Self-Hosted Inference Platform (Production)
+# Kết nối tới llm-d inference gateway đã deploy trên K8s cluster
+# ==============================================================================
+apiVersion: kagent.dev/v1alpha2
+kind: ModelConfig
+metadata:
+  name: llm-d-model-config
+  namespace: kagent
+spec:
+  provider: OpenAI
+  model: qwen2.5:1.5b
+  # Dummy secret reference; pass a placeholder secret if auth is disabled on your gateway
+  apiKeySecret: groq-secret
+  apiKeySecretKey: api-key
+  openAI:
+    baseUrl: "http://llm-d-inference-gateway.llm-d-quickstart.svc.cluster.local/v1"
+    timeout: 60
