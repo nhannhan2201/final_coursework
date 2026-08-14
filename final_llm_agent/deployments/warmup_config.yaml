@@ -1,0 +1,134 @@
+# ==============================================================================
+# Agent Warm Up Configuration — Tối Ưu Cold Start & Chi Phí
+# Cấu hình Warm Up pool cho AI Agent giảm thiểu thời gian khởi động (startup)
+# và tối ưu chi phí vận hành bằng KEDA idle replicas strategy.
+# ==============================================================================
+
+# --- 1. ConfigMap: Warmup Script ---
+# Script được thực thi trong initContainer để pre-warm kết nối tới MCP Servers
+# và LLM Inference endpoint trước khi Agent nhận traffic.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-warmup-script
+  namespace: kagent
+data:
+  warmup.sh: |
+    #!/bin/bash
+    echo "[WARM UP] Starting agent warm-up sequence..."
+    
+    # 1. Pre-warm kết nối tới Feature Store API
+    echo "[WARM UP] Pinging Feature Store API..."
+    curl -sf http://feature-api-service:8000/health || echo "[WARN] Feature API not ready"
+    
+    # 2. Pre-warm kết nối tới Drift Detection API
+    echo "[WARM UP] Pinging Drift Detection API..."
+    curl -sf http://drift-api-service:8003/health || echo "[WARN] Drift API not ready"
+    
+    # 3. Pre-warm kết nối tới LLM Inference Gateway (AgentGateway)
+    echo "[WARM UP] Pinging LLM Inference Gateway..."
+    curl -sf http://llm-d-inference-gateway.llm-d-quickstart.svc.cluster.local/v1/models || echo "[WARN] LLM Gateway not ready"
+    
+    # 4. Pre-load DNS cache bằng cách resolve tất cả service endpoints
+    echo "[WARM UP] Resolving DNS entries..."
+    nslookup feature-api-service.default.svc.cluster.local || true
+    nslookup drift-api-service.default.svc.cluster.local || true
+    nslookup elasticsearch.logging.svc.cluster.local || true
+    
+    echo "[WARM UP] ✅ Warm-up sequence completed successfully."
+---
+
+# --- 2. Agent Deployment Patch: Warm Up + Probes ---
+# Áp dụng patch này lên các Agent Deployment để bật chế độ Warm Up
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ecom-agent-warmup-patch
+  namespace: kagent
+  annotations:
+    warmup.kagent.dev/enabled: "true"
+    warmup.kagent.dev/strategy: "pre-warm-connections"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ecom-agent
+  template:
+    metadata:
+      labels:
+        app: ecom-agent
+    spec:
+      # --- initContainer: Chạy warmup script TRƯỚC khi agent khởi động ---
+      initContainers:
+      - name: warmup-init
+        image: curlimages/curl:8.9.1
+        command: ["/bin/sh", "/scripts/warmup.sh"]
+        volumeMounts:
+        - name: warmup-scripts
+          mountPath: /scripts
+
+      containers:
+      - name: agent-runtime
+        image: cr.kagent.dev/kagent-dev/kagent/app:0.9.12
+        # --- startupProbe: Cho agent thời gian khởi tạo nội bộ ---
+        # Agent được cho phép tối đa 60s (10 x 6s) để hoàn tất warm up
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 6
+          failureThreshold: 10
+
+        # --- readinessProbe: Chỉ nhận traffic khi đã sẵn sàng ---
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 3
+          periodSeconds: 5
+
+        # --- livenessProbe: Tự restart nếu bị treo ---
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 10
+
+        # --- lifecycle: Graceful shutdown ---
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "sleep 10"]
+
+      volumes:
+      - name: warmup-scripts
+        configMap:
+          name: agent-warmup-script
+          defaultMode: 0755
+
+---
+
+# --- 3. KEDA ScaledObject: Idle Replicas = 1 (Warm Pool) ---
+# Luôn giữ tối thiểu 1 replica sẵn sàng (warm pool) để tránh cold start hoàn toàn.
+# Khi có tải, KEDA tự động scale lên tối đa 5 replicas.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: ecom-agent-warmpool-scaler
+  namespace: kagent
+spec:
+  scaleTargetRef:
+    name: ecom-agent-warmup-patch
+  # === WARM POOL: Luôn giữ 1 pod sẵn sàng ===
+  minReplicaCount: 1
+  maxReplicaCount: 5
+  cooldownPeriod: 120
+  triggers:
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus-server.default.svc.cluster.local:80
+      metricName: http_requests_per_second
+      query: sum(rate(http_requests_total{endpoint=~"/api/v1/.*"}[1m]))
+      threshold: "10"

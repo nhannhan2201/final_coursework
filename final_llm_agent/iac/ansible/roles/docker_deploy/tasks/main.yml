@@ -1,0 +1,35 @@
+---
+- name: Create destination project directory on VM
+  file:
+    path: /opt/ecom_datalake
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: docker
+    mode: '0775'
+  become: yes
+
+- name: Synchronize minicoursework codebase to target VM
+  synchronize:
+    src: "../../../../minicoursework/"
+    dest: /opt/ecom_datalake/
+    archive: yes
+    recursive: yes
+    rsync_opts:
+      - "--exclude=.git"
+      - "--exclude=__pycache__"
+      - "--exclude=.pytest_cache"
+
+- name: Ensure docker network datahub_network exists
+  shell: docker network inspect datahub_network >/dev/null 2>&1 || docker network create datahub_network
+  become: yes
+
+- name: Deploy Data Stack containers using Docker Compose
+  shell: |
+    cd /opt/ecom_datalake && \
+    docker compose -f docker-compose.yml -f datahub-compose.yml up -d
+  become: yes
+  register: compose_output
+
+- name: Display docker compose output
+  debug:
+    var: compose_output.stdout_lines

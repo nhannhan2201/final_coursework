@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-sandbox-security-policy
+  namespace: default
+data:
+  security-policy.json: |
+    {
+      "sandbox_name": "ECommerceAgentSandbox",
+      "isolation_level": "strict",
+      "allowed_syscalls": [
+        "read", "write", "exit", "futex", "epoll_wait", "connect"
+      ],
+      "network_policy": {
+        "ingress": "deny_all_except_gateway",
+        "egress": "allow_internal_mcp_and_registry_only"
+      },
+      "resource_limits": {
+        "max_memory_mb": 512,
+        "max_cpu_cores": 1.0,
+        "max_execution_time_seconds": 30
+      },
+      "permissions": {
+        "file_system": "read_only_tmp_only",
+        "env_access": "sanitized_whitelisted"
+      }
+    }

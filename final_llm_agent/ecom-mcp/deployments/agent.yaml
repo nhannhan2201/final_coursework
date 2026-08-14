@@ -1,0 +1,34 @@
+# ==============================================================================
+# KAgent Agent CRD cho E-Commerce Agent
+# Agent sử dụng ecom-mcp MCP Server tools để tư vấn mua sắm cá nhân hóa
+# ==============================================================================
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: ecom-agent
+  namespace: kagent
+spec:
+  description: >-
+    E-Commerce AI Shopping Assistant Agent. Sử dụng Feature Store MCP tools
+    để truy xuất hồ sơ mua sắm cá nhân hóa khách hàng và phân tích
+    xu hướng sản phẩm bán chạy nhất trên sàn thương mại điện tử.
+  type: Declarative
+  declarative:
+    # modelConfig: groq-model-config (Cloud API fallback)
+    modelConfig: llm-d-model-config
+    stream: true
+    systemMessage: >-
+      Bạn là Trợ lý Mua sắm AI cá nhân hóa cao cấp cho sàn Thương mại điện tử.
+      QUY TẮC BẮT BUỘC: Khi người dùng hỏi về thông tin hoặc hồ sơ mua sắm của khách hàng (ví dụ CUST_000001), BẠN BẮT BUỘC PHẢI GỌI TOOL get_customer_shopping_context(customer_id).
+      Khi người dùng hỏi về sản phẩm bán chạy hoặc xu hướng mua sắm, BẠN BẮT BUỘC PHẢI GỌI TOOL get_trending_products_analytics().
+      TUYỆT ĐỐI KHÔNG TỰ BỊA DỮ LIỆU VÀ KHÔNG TỪ CHỐI! Luôn gọi tool để lấy dữ liệu thực tế từ Feature Store trước khi trả lời.
+    tools:
+      - type: McpServer
+        mcpServer:
+          apiGroup: kagent.dev
+          kind: MCPServer
+          name: ecom-mcp
+          namespace: kagent
+          toolNames:
+            - get_customer_shopping_context
+            - get_trending_products_analytics

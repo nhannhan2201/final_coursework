@@ -1,0 +1,77 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llm-d-quickstart
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kagent
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agentgateway-system
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: modelconfigs.kagent.dev
+spec:
+  group: kagent.dev
+  versions:
+    - name: v1alpha2
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+  scope: Namespaced
+  names:
+    plural: modelconfigs
+    singular: modelconfig
+    kind: ModelConfig
+    shortNames:
+      - mc
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: agentgatewaybackends.agentgateway.dev
+spec:
+  group: agentgateway.dev
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+  scope: Namespaced
+  names:
+    plural: agentgatewaybackends
+    singular: agentgatewaybackend
+    kind: AgentgatewayBackend
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: httproutes.gateway.networking.k8s.io
+spec:
+  group: gateway.networking.k8s.io
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+  scope: Namespaced
+  names:
+    plural: httproutes
+    singular: httproute
+    kind: HTTPRoute

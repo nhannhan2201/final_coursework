@@ -1,0 +1,11 @@
+*gcp-key*.json
+*secret*.json
+*.pem
+*.key
+*.tfstate
+*.tfstate.*
+.terraform/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/

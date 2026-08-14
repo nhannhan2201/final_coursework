@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Pytest & Mutmut
+.pytest_cache/
+mutants/
+.coverage
+
+# Terraform
+final_llm_agent/iac/terraform/.terraform/
+final_llm_agent/iac/terraform/.terraform.lock.hcl
+final_llm_agent/iac/terraform/terraform.tfstate
+final_llm_agent/iac/terraform/terraform.tfstate.backup
+
+# Java / Flink Jars (heavy files)
+jars/
+*.jar
+
+# Environment / Secret configs
+.env
+.env.*
+
+# IDE configs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# OS temporary files
+.DS_Store
+Thumbs.db

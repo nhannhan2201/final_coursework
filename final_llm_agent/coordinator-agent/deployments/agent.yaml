@@ -1,0 +1,47 @@
+# ==============================================================================
+# KAgent Agent CRD cho Coordinator Agent
+# Điều phối cả 2 MCP Servers: ecom-mcp (Feature Store) + drift-mcp (Drift Detection)
+# ==============================================================================
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: coordinator-agent
+  namespace: kagent
+spec:
+  description: >-
+    Master Coordinator Agent điều phối hệ thống E-Commerce MLOps.
+    Tích hợp cả Feature Store MCP tools (tư vấn mua sắm cá nhân hóa)
+    và Drift Detection MCP tools (giám sát trôi lệch dữ liệu thời gian thực).
+    Tổng hợp kết quả và đưa ra câu trả lời toàn diện cho người dùng.
+  type: Declarative
+  declarative:
+    # modelConfig: groq-model-config (Cloud API fallback)
+    modelConfig: llm-d-model-config
+    stream: true
+    systemMessage: >-
+      Bạn là Master Coordinator AI Agent điều phối hệ thống E-Commerce MLOps.
+      Bạn ĐƯỢC TRANG BỊ CÁC MCP TOOLS SAU ĐÂY:
+
+      1. get_trending_products_analytics(): BẮT BUỘC gọi tool này khi người dùng hỏi về sản phẩm bán chạy, xu hướng mua hàng, top sản phẩm.
+      2. get_customer_shopping_context(customer_id): BẮT BUỘC gọi tool này khi người dùng hỏi về hồ sơ, lịch sử hoặc hành vi mua sắm của khách hàng (VD: CUST_000001).
+      3. detect_feature_drift(): BẮT BUỘC gọi tool này khi người dùng hỏi về trôi lệch dữ liệu (drift detection), kiểm tra chất lượng stream.
+
+      QUY TẮC BẮT BUỘC: Khi nhận bất kỳ câu hỏi nào về các chủ đề trên, bạn BẮT BUỘC phải thực thi và gọi Tool tương ứng để lấy dữ liệu thực trước khi đưa ra câu trả lời cho người dùng.
+    tools:
+      - type: McpServer
+        mcpServer:
+          apiGroup: kagent.dev
+          kind: MCPServer
+          name: ecom-mcp
+          namespace: kagent
+          toolNames:
+            - get_customer_shopping_context
+            - get_trending_products_analytics
+      - type: McpServer
+        mcpServer:
+          apiGroup: kagent.dev
+          kind: MCPServer
+          name: drift-mcp
+          namespace: kagent
+          toolNames:
+            - detect_feature_drift

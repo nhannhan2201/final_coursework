@@ -1,0 +1,74 @@
+# ==============================================================================
+# NGINX Ingress Gateway Manifest cho E-Commerce MLOps & AI Agent System
+# Quản lý Cổng điều hướng, Rate Limiting (Chống DDoS), CORS & Route Security
+# ==============================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ecom-agentic-ingress
+  namespace: default
+  annotations:
+    # Chỉ định NGINX Ingress Controller
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    
+    # --------------------------------------------------------------------------
+    # 🛡️ Bảo mật & Rate Limiting (Chống DDOS / Rate Limit)
+    # --------------------------------------------------------------------------
+    nginx.ingress.kubernetes.io/limit-rps: "10"               # Tối đa 10 request / giây / IP
+    nginx.ingress.kubernetes.io/limit-connections: "20"        # Tối đa 20 kết nối đồng thời
+    
+    # --------------------------------------------------------------------------
+    # 🌐 Cấu hình Cross-Origin Resource Sharing (CORS) cho Web App / Mobile App
+    # --------------------------------------------------------------------------
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, OPTIONS, PUT, DELETE"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization,x-api-key"
+    
+    # --------------------------------------------------------------------------
+    # ⏱️ Timeouts & Buffer Optimizations
+    # --------------------------------------------------------------------------
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          # 1. Feature Store Web API Routing
+          - path: /api/v1/features
+            pathType: Prefix
+            backend:
+              service:
+                name: feature-api-service
+                port:
+                  number: 8000
+
+          # 2. Real-time Drift Detection Web API Routing
+          - path: /api/v1/drift
+            pathType: Prefix
+            backend:
+              service:
+                name: drift-api-service
+                port:
+                  number: 8003
+
+          # 3. Model Context Protocol (MCP) Server Routing
+          - path: /mcp
+            pathType: Prefix
+            backend:
+              service:
+                name: ecom-mcp
+                port:
+                  number: 8000
+
+          # 4. KAgent UI / Chatbot Agent Gateway Entrypoint
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kagent-ui
+                port:
+                  number: 80

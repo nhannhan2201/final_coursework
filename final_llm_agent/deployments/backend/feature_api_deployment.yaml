@@ -1,0 +1,57 @@
+# ==============================================================================
+# Kubernetes Deployment & Service cho Feature Store Web API (apps/feature_api.py)
+# Tạo ra service 'feature-api-service' ở namespace default, port 8000
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: feature-api
+  namespace: default
+  labels:
+    app: feature-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: feature-api
+  template:
+    metadata:
+      labels:
+        app: feature-api
+    spec:
+      containers:
+        - name: feature-api
+          image: nhannguyen2201/feature-api:0.0.1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          env:
+            - name: REDIS_HOST
+              value: "34.143.213.21"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: TRINO_HOST
+              value: "34.143.213.21"
+            - name: TRINO_PORT
+              value: "8080"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: feature-api-service
+  namespace: default
+  labels:
+    app: feature-api
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+      protocol: TCP
+      name: http
+  selector:
+    app: feature-api
