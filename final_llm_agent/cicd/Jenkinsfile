@@ -37,8 +37,8 @@ pipeline {
             steps {
                 echo '🧪 Đang thực thi 36 bài kiểm thử tự động (Unit, Boundary, Property Tests)...'
                 sh '''
-                    export PYTHONPATH=.
-                    pytest tests/ -v --cov=apps --cov-report=term-missing
+                    export PYTHONPATH=final_llm_agent
+                    pytest final_llm_agent/tests/ -v --cov=final_llm_agent/apps --cov-report=term-missing
                 '''
             }
         }
@@ -51,10 +51,10 @@ pipeline {
                 script {
                     echo "🐳 Đang đóng gói 4 Docker Images cho Feature API, Drift API, và 2 MCP Servers..."
                     
-                    def featureImg  = docker.build("${registry}/feature-api:${env.GIT_COMMIT_SHORT}",  "-f apps/feature-api/Dockerfile .")
-                    def driftImg    = docker.build("${registry}/drift-api:${env.GIT_COMMIT_SHORT}",    "-f apps/drift-api/Dockerfile .")
-                    def ecomMcpImg  = docker.build("${registry}/ecom-mcp:${env.GIT_COMMIT_SHORT}",     "-f agentic_ai/ecom-mcp/Dockerfile ./agentic_ai/ecom-mcp")
-                    def driftMcpImg = docker.build("${registry}/drift-mcp:${env.GIT_COMMIT_SHORT}",    "-f agentic_ai/drift-mcp/Dockerfile ./agentic_ai/drift-mcp")
+                    def featureImg  = docker.build("${registry}/feature-api:${env.GIT_COMMIT_SHORT}",  "-f final_llm_agent/apps/feature-api/Dockerfile final_llm_agent")
+                    def driftImg    = docker.build("${registry}/drift-api:${env.GIT_COMMIT_SHORT}",    "-f final_llm_agent/apps/drift-api/Dockerfile final_llm_agent")
+                    def ecomMcpImg  = docker.build("${registry}/ecom-mcp:${env.GIT_COMMIT_SHORT}",     "-f final_llm_agent/agentic_ai/ecom-mcp/Dockerfile final_llm_agent/agentic_ai/ecom-mcp")
+                    def driftMcpImg = docker.build("${registry}/drift-mcp:${env.GIT_COMMIT_SHORT}",    "-f final_llm_agent/agentic_ai/drift-mcp/Dockerfile final_llm_agent/agentic_ai/drift-mcp")
 
                     echo '🚀 Đang đẩy toàn bộ Docker Images lên kho chứa Docker Hub...'
                     docker.withRegistry('', registryCredential) {
@@ -111,7 +111,7 @@ pipeline {
                             git config user.email "jenkins@ci"
                             git config user.name "Jenkins CI"
                             git tag -a ${newTag} -m 'Release ${newTag} [ci skip]' || true
-                            REPO=\$(git remote get-url origin | sed 's|https://github.com/||')
+                            REPO=\$(git remote get-url origin | sed 's|https://[^@]*@github.com/||' | sed 's|https://github.com/||')
                             git remote set-url origin https://\${GIT_USER}:\${GIT_TOKEN}@github.com/\${REPO}
                             git push origin ${newTag} || true
                         """
@@ -137,17 +137,17 @@ pipeline {
                     withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                         sh '''
                             # 1. Triển khai Web APIs Backend & NGINX Ingress Gateway
-                            kubectl apply -f apps/deployments/
+                            kubectl apply -f final_llm_agent/apps/deployments/
 
                             # 2. Triển khai Gateway Routing, ModelConfig & Policy
-                            kubectl apply -f agentic_ai/model-config/
-                            kubectl apply -f agentic_ai/agentgateway-routing.yaml
-                            kubectl apply -f agentic_ai/agentgateway_policy.yaml
+                            kubectl apply -f final_llm_agent/agentic_ai/model-config/
+                            kubectl apply -f final_llm_agent/agentic_ai/agentgateway-routing.yaml
+                            kubectl apply -f final_llm_agent/agentic_ai/agentgateway_policy.yaml
 
                             # 3. Triển khai FastMCP Servers & KAgent Declarative Agents
-                            kubectl apply -f agentic_ai/ecom-mcp/deployments/
-                            kubectl apply -f agentic_ai/drift-mcp/deployments/
-                            kubectl apply -f agentic_ai/coordinator-agent/deployments/
+                            kubectl apply -f final_llm_agent/agentic_ai/ecom-mcp/deployments/
+                            kubectl apply -f final_llm_agent/agentic_ai/drift-mcp/deployments/
+                            kubectl apply -f final_llm_agent/agentic_ai/coordinator-agent/deployments/
 
                             # 4. Khởi động lại các Service đảm bảo Zero-Downtime cập nhật image mới nhất
                             kubectl rollout restart deployment/feature-api -n default || true
