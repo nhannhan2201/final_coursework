@@ -105,8 +105,8 @@ helm upgrade --install kagent oci://ghcr.io/kagent-dev/kagent/helm/kagent \
   --namespace kagent \
   --set global.agents.enabled=false
 
-# 3. Create Groq API Secret placeholder in kagent namespace
-kubectl create secret generic groq-secret -n kagent --from-literal=api-key="placeholder" --dry-run=client -o yaml | kubectl apply -f -
+# 3. Create LLM Secret placeholder in kagent namespace
+kubectl create secret generic llm-secret -n kagent --from-literal=api-key="placeholder" --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 ### 🔹 Bước 6.3: Cài đặt LLM-d Inference Gateway & ModelServer

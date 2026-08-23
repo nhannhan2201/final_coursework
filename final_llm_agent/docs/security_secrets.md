@@ -4,10 +4,21 @@ Báo cáo cấu hình quản lý mã bí mật tập trung (Secrets) nhằm lo�
 
 ---
 
-## 🏛️ 1. Giải Pháp Quản Lý Mã Bí Mật Tập Trung (Centralized Secrets Store)
-Hệ thống sử dụng **HashiCorp Vault** (hoặc giải pháp tích hợp **Kubernetes Secrets** mã hóa nghiêm ngặt) để lưu giữ các API keys như `GROQ_API_KEY`, mật khẩu database của AgentRegistry, và `kubeconfig` của CI/CD runner.
+## 🏛️ 1. Giải Pháp Quản Lý Mã Bí Mật Tập Trung (Kubernetes Secrets)
+Hệ thống sử dụng **Kubernetes Secret Management** để lưu giữ các API keys, mật khẩu database của AgentRegistry, `kubeconfig` của CI/CD runner, và thông tin đăng nhập LLM / OTel:
 
-- Các khóa bí mật được nạp động vào pods dưới dạng biến môi trường (`envFrom` hoặc `SecretProviderClass` CSI Driver) tại thời điểm khởi tạo pod.
+- `agentic_ai/model-config/llm-secret.yaml`: Quản lý API Key cho LLM Endpoint.
+- `observability/helm_charts/otel/values.yaml`: Quản lý Secret xác thực `langfuse-otel-auth` và `elasticsearch-es-elastic-user`.
+- `cicd/`: Quản lý `jenkins-token` RBAC Secret.
 
-> 📸 **[CAPTURE MINH CHỨNG - QUẢN LÝ SECRETS TẬP TRUNG]**
-> *Hãy chụp màn hình giao diện HashiCorp Vault UI (hoặc danh sách Kubernetes Secrets chạy lệnh `kubectl get secrets -n kagent`) thể hiện các cấu hình secret không bị để lộ trong code.*
+```bash
+# Kiểm tra danh sách Secrets trong namespace kagent và monitoring:
+kubectl get secrets -n kagent
+kubectl get secrets -n monitoring
+```
+
+> 📸 **MINH CHỨNG QUẢN LÝ SECRETS TẬP TRUNG:**
+>
+> *(Chèn ảnh chụp màn hình terminal lệnh `kubectl get secrets -n kagent` và `kubectl get secrets -n monitoring` tại đây)*
+> 
+> ![Kubernetes Secrets Management](screenshot_kubernetes_secrets.png)

@@ -1,0 +1,57 @@
+# ==============================================================================
+# NGINX Ingress Controller — Edge Gateway & Traffic Routing Manifest
+# Tích hợp: Rate Limiting (10 RPS), CORS, Path Routing cho Web APIs & MCPs
+# ==============================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ecom-agentic-ingress
+  namespace: default
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+spec:
+  rules:
+  - http:
+      paths:
+      # Định tuyến Feature Store REST API
+      - path: /api/v1/features
+        pathType: Prefix
+        backend:
+          service:
+            name: feature-api-service
+            port:
+              number: 8000
+
+      # Định tuyến Real-time Drift Detection API
+      - path: /api/v1/drift
+        pathType: Prefix
+        backend:
+          service:
+            name: drift-api-service
+            port:
+              number: 8003
+
+      # Định tuyến E-Commerce FastMCP Server
+      - path: /mcp/ecom
+        pathType: Prefix
+        backend:
+          service:
+            name: ecom-mcp-service
+            port:
+              number: 8000
+
+      # Định tuyến Drift Detection FastMCP Server
+      - path: /mcp/drift
+        pathType: Prefix
+        backend:
+          service:
+            name: drift-mcp-service
+            port:
+              number: 8000

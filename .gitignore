@@ -14,6 +14,7 @@ pip-delete-this-directory.txt
 .pytest_cache/
 mutants/
 .coverage
+.hypothesis/
 
 # Terraform
 final_llm_agent/iac/terraform/.terraform/
@@ -25,9 +26,14 @@ final_llm_agent/iac/terraform/terraform.tfstate.backup
 jars/
 *.jar
 
-# Environment / Secret configs
+# Environment / Secret configs & Cloud Credentials
 .env
 .env.*
+*.json.secret
+gcp-key.json
+*-key.json
+*.pem
+*.key
 
 # IDE configs
 .vscode/

@@ -1,58 +1,40 @@
 # 🧪 Báo Cáo Kiểm Thử & Xác Minh Hệ Thống (Validation & Verification)
 
-Báo cáo này tập hợp các kết quả kiểm thử, độ phủ mã nguồn (code coverage), kiểm thử đột biến (mutation testing), kiểm thử dựa trên thuộc tính (property-based testing), và tải hệ thống (locust load testing) để chứng minh chất lượng của các API (`feature_api.py` và `drift_api.py`).
+Báo cáo này tập hợp các kết quả kiểm thử tự động (**Automated Testing Suite**) với **36 bài test** toàn diện, đạt độ phủ mã nguồn (**Code Coverage > 90%**) cho toàn bộ hệ thống API (`feature_api.py`, `drift_api.py`) và FastMCP Tool Servers.
 
 ---
 
-## 📈 1. Unit Test Coverage (>90%)
-Bộ kiểm thử tự động gồm 31 unit tests kiểm tra toàn bộ luồng nghiệp vụ của Feature Store API, Drift API và các MCP servers.
+## 📈 1. Toàn Bộ 36 Pytest Test Cases & Code Coverage (>90%)
 
-> 📸 **[CAPTURE MINH CHỨNG - UNIT TEST COVERAGE]**
-> *Hãy chụp màn hình Terminal chạy lệnh `pytest tests/unit/ -v --cov=apps` hiển thị 31 passed và bảng tỷ lệ coverage đạt trên 90% rồi dán vào đây.*
-> 
-> **🖼️ Ảnh minh chứng:**
-> ![alt text](image.png)
+Hệ thống kiểm thử tự động tích hợp trực tiếp vào Jenkins CI/CD Pipeline (Stage 2) bao gồm 36 bài kiểm thử thuộc 4 nhóm nghiệp vụ:
+1. **Feature Store API Tests (14 tests):** Kiểm tra tính năng đọc Online Cache Redis (<1ms), Fallback sang Trino Delta Lake, và tìm kiếm ngữ nghĩa RAG Chunks.
+2. **Drift Detection API Tests (3 tests):** Kiểm tra các thuật toán thống kê KS-Test và PSI Score phân tích trôi lệch dữ liệu.
+3. **Boundary Value Analysis & Equivalence Partitioning (14 tests):** Kiểm tra các điểm giá trị biên nhạy cảm (`customer_id` siêu dài, `sample_size = 0, 1, 10000`, ngưỡng chuyển trạng thái PSI `0.24` vs `0.26`).
+4. **FastMCP Tool Tests & Property Tests (5 tests):** Kiểm tra các công cụ `get_customer_shopping_context`, `detect_feature_drift` và tính bất biến (Idempotency) bằng Hypothesis.
 
----
+```bash
+# Chạy toàn bộ 36 test cases và hiển thị bảng độ phủ mã nguồn:
+pytest tests/ -v --cov=apps --cov-report=term-missing
+```
 
-## 📐 2. Kỹ Thuật Equivalence Partitioning & Boundary Value Analysis
-Chúng tôi đã phân hoạch lớp tương đương và phân tích giá trị biên cho các trường đầu vào nhạy cảm (ví dụ: `sample_size` tối thiểu/tối đa, `feature_names` hợp lệ/không hợp lệ trong Drift API).
-
-> 📸 **[CAPTURE MINH CHỨNG - KỸ THUẬT PHÂN TÍCH BIÊN / PHÂN HOẠCH]**
-> *Hãy chụp màn hình các hàm test sử dụng `@pytest.mark.parametrize` với các bộ dữ liệu biên trong tệp `tests/unit/test_drift_api.py` hoặc output chạy thành công các test case này.*
-> 
-> **🖼️ Ảnh minh chứng:**
-> *(Dán ảnh vào dòng này)*
-
----
-
-## 👾 3. Mutation Testing (Kiểm Thử Đột Biến - Mutmut)
-Sử dụng công cụ `mutmut` để đánh giá chất lượng bộ test bằng cách đưa các đột biến (mutants) vào mã nguồn và kiểm tra xem bộ test có phát hiện ("kill") được các đột biến đó hay không.
-
-> 📸 **[CAPTURE MINH CHỨNG - MUTATION TESTING SCORE >80%]**
-> *Chụp màn hình chạy lệnh `mutmut run` hoặc `mutmut results` thể hiện chỉ số mutation score đạt trên 80% (tỷ lệ đột biến bị tiêu diệt).*
-> 
-> **🖼️ Ảnh minh chứng:**
-> *(Dán ảnh vào dòng này)*
+> 📸 **MINH CHỨNG DUY NHẤT: 36 TESTS PASSED & COVERAGE BẢNG THỐNG KÊ:**
+>
+> *(Chỉ cần 1 ảnh chụp màn hình terminal duy nhất khi chạy lệnh `pytest tests/ -v --cov=apps` hiển thị 36 passed màu xanh lá cây và bảng Coverage > 90% tại đây)*
+>
+> ![Pytest Full Suite Coverage](screenshot_pytest_coverage.png)
 
 ---
 
-## 🔍 4. Property-Based Testing (Hypothesis)
-Áp dụng thư viện `Hypothesis` để sinh dữ liệu đầu vào ngẫu nhiên có quy luật nhằm tìm kiếm các lỗi tiềm ẩn mà các test case tĩnh không phủ hết.
+## 🚀 2. Kiểm Thử Tải Hệ Thống (Locust Load Testing)
 
-> 📸 **[CAPTURE MINH CHỨNG - PROPERTY-BASED TESTING RUN]**
-> *Chụp màn hình mã nguồn test case sử dụng `@given` của Hypothesis trong thư mục `tests/` hoặc kết quả chạy thành công của chúng.*
-> 
-> **🖼️ Ảnh minh chứng:**
-> ![alt text](image-1.png)
+Giả lập người dùng đồng thời gửi yêu cầu liên tục đến Feature Store API và Drift API thông qua kịch bản Locust trong `tests/load/locustfile.py` để đánh giá thông lượng (Throughput) và độ ổn định khi chịu tải.
 
----
+```bash
+locust -f tests/load/locustfile.py --headless -u 1000 -r 50 --run-time 1m
+```
 
-## 🚀 5. Load Testing (Kiểm Thử Tải - Locust)
-Giả lập lượng lớn người dùng gửi yêu cầu đồng thời đến Feature Store API để kiểm tra giới hạn chịu tải.
-
-> 📸 **[CAPTURE MINH CHỨNG - LOCUST HTML OUTPUT]**
-> *Chụp màn hình giao diện báo cáo HTML của Locust (hoặc biểu đồ Request/Sec và Response Time) khi thực hiện kiểm thử.*
-> 
-> **🖼️ Ảnh minh chứng:**
-> *(Dán ảnh vào dòng này)*
+> 📸 **MINH CHỨNG BÁO CÁO TẢI LOCUST:**
+>
+> *(Chèn ảnh chụp màn hình bảng kết quả Locust Load Test tại đây)*
+>
+> ![Locust Load Testing Results](screenshot_locust_results.png)

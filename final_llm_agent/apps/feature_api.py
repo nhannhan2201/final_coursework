@@ -7,9 +7,10 @@ phục vụ cho LLM Agent theo chuẩn REST API.
 
 Đặc điểm chính:
 1. Độc lập, hiệu năng cao với async/await.
-2. Kiểm định Pydantic Schemas chặt chẽ.
+2. Kiểm định Pydantic Schemas chặt chẽ (Pydantic V2 compatible).
 3. Cung cấp Healthcheck endpoint (/health) cho Kubernetes / Docker readiness.
 4. Truy xuất trực tiếp Redis (<1ms) và Trino Delta Lake.
+5. Tích hợp OpenTelemetry Tracing Spans & Prometheus Telemetry Metrics.
 ==============================================================================
 """
 
@@ -24,7 +25,7 @@ from pydantic import BaseModel, Field
 import redis.asyncio as redis
 import trino
 
-from apps.telemetry import setup_telemetry
+from apps.telemetry import setup_telemetry, trace_span
 
 app = FastAPI(
     title="E-Commerce Feature Store Web API for LLM Agents",
@@ -47,157 +48,160 @@ TRINO_CATALOG = os.getenv("TRINO_CATALOG", "delta")
 TRINO_SCHEMA = os.getenv("TRINO_SCHEMA", "gold")
 
 # ------------------------------------------------------------------------------
-# Pydantic Schemas
+# Pydantic Schemas (Pydantic V2 Compatible)
 # ------------------------------------------------------------------------------
 class HealthCheckResponse(BaseModel):
-    status: str = Field(..., example="healthy")
-    service: str = Field(..., example="Feature Store API")
+    status: str = Field(..., json_schema_extra={"example": "healthy"})
+    service: str = Field(..., json_schema_extra={"example": "Feature Store API"})
     timestamp: str = Field(...)
 
 class CustomerFeatureResponse(BaseModel):
-    customer_id: str = Field(..., example="CUST_000001")
-    full_name: Optional[str] = Field("Khách hàng E-Commerce", example="Nguyễn Văn An")
-    city: Optional[str] = Field("Hồ Chí Minh", example="Hanoi")
+    customer_id: str = Field(..., json_schema_extra={"example": "CUST_000001"})
+    full_name: Optional[str] = Field("Khách hàng E-Commerce", json_schema_extra={"example": "Nguyễn Văn An"})
+    city: Optional[str] = Field("Hồ Chí Minh", json_schema_extra={"example": "Hanoi"})
     
     # Offline 90d Batch Features (Delta Lake)
-    f_customer_total_orders_90d: int = Field(0, example=12)
-    f_customer_avg_order_value_90d: float = Field(0.0, example=250.50)
-    f_customer_distinct_categories_90d: int = Field(0, example=5)
+    f_customer_total_orders_90d: int = Field(0, json_schema_extra={"example": 12})
+    f_customer_avg_order_value_90d: float = Field(0.0, json_schema_extra={"example": 250.50})
+    f_customer_distinct_categories_90d: int = Field(0, json_schema_extra={"example": 5})
     
     # Online Real-time Streaming Features (Redis)
-    views_last_30m: int = Field(0, example=15)
-    cart_add_last_30m: int = Field(0, example=3)
-    latest_viewed_category: Optional[str] = Field("Fashion & Electronics", example="Electronics")
-    data_source: str = Field("Redis (Online) + Delta Lake (Offline)", example="Redis + Trino")
+    views_last_30m: int = Field(0, json_schema_extra={"example": 15})
+    cart_add_last_30m: int = Field(0, json_schema_extra={"example": 3})
+    latest_viewed_category: Optional[str] = Field("Fashion & Electronics", json_schema_extra={"example": "Electronics"})
+    data_source: str = Field("Redis (Online) + Delta Lake (Offline)", json_schema_extra={"example": "Redis + Trino"})
     retrieved_at: str = Field(...)
 
 class TrendingProductItem(BaseModel):
-    category: str = Field(..., example="Electronics")
-    brand: str = Field(..., example="Apple")
-    total_units_sold: int = Field(..., example=450)
-    total_revenue: float = Field(..., example=125000.00)
+    category: str = Field(..., json_schema_extra={"example": "Electronics"})
+    brand: str = Field(..., json_schema_extra={"example": "Apple"})
+    total_units_sold: int = Field(..., json_schema_extra={"example": 450})
+    total_revenue: float = Field(..., json_schema_extra={"example": 125000.00})
 
 class TrendingAnalyticsResponse(BaseModel):
     top_categories: List[TrendingProductItem] = Field(...)
-    analysis_period: str = Field("Gold Layer Sales History (Delta Lake)", example="Full Delta Lake History")
+    analysis_period: str = Field("Gold Layer Sales History (Delta Lake)", json_schema_extra={"example": "Full Delta Lake History"})
     retrieved_at: str = Field(...)
 
 # ------------------------------------------------------------------------------
-# Helper Functions
+# Helper Functions with Distributed Tracing Spans
 # ------------------------------------------------------------------------------
 async def get_online_features_from_redis(customer_id: str) -> Dict[str, Any]:
-    """Kết nối Redis lấy đặc trưng streaming 30m/60m thời gian thực."""
-    try:
-        r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
-        key = f"feat_stream:{customer_id}"
-        data = await r.hgetall(key)
-        await r.aclose()
+    """Kết nối Redis lấy đặc trưng streaming 30m/60m thời gian thực (Trace Span)."""
+    with trace_span("redis.get_online_features", {"db.system": "redis", "customer_id": customer_id}):
+        try:
+            r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+            key = f"feat_stream:{customer_id}"
+            data = await r.hgetall(key)
+            await r.aclose()
+            
+            if data:
+                return {
+                    "views_last_30m": int(data.get("f_stream_views_30m", data.get("views_30m", 0))),
+                    "cart_add_last_30m": int(data.get("f_stream_add_to_cart_30m", data.get("cart_30m", 0))),
+                    "latest_viewed_category": data.get("latest_category", "Fashion & Electronics")
+                }
+        except Exception as e:
+            print(f"⚠️ Warning: không thể kết nối Redis ({e}). Dùng fallback default.")
         
-        if data:
-            return {
-                "views_last_30m": int(data.get("f_stream_views_30m", data.get("views_30m", 0))),
-                "cart_add_last_30m": int(data.get("f_stream_add_to_cart_30m", data.get("cart_30m", 0))),
-                "latest_viewed_category": data.get("latest_category", "Fashion & Electronics")
-            }
-    except Exception as e:
-        print(f"⚠️ Warning: không thể kết nối Redis ({e}). Dùng fallback default.")
-    
-    # Mock / Fallback data nếu chưa có stream cho customer_id này
-    return {
-        "views_last_30m": 8,
-        "cart_add_last_30m": 2,
-        "latest_viewed_category": "Thời trang & Phụ kiện"
-    }
+        # Mock / Fallback data nếu chưa có stream cho customer_id này
+        return {
+            "views_last_30m": 8,
+            "cart_add_last_30m": 2,
+            "latest_viewed_category": "Thời trang & Phụ kiện"
+        }
 
 def get_offline_features_from_trino(customer_id: str) -> Dict[str, Any]:
-    """Kết nối Trino đọc dữ liệu batch 90d từ Delta Lake Gold Layer."""
-    try:
-        conn = trino.dbapi.connect(
-            host=TRINO_HOST,
-            port=TRINO_PORT,
-            user=TRINO_USER,
-            catalog=TRINO_CATALOG,
-            schema=TRINO_SCHEMA
-        )
-        cursor = conn.cursor()
-        
-        # Query bảng unified features
-        query = f"""
-            SELECT customer_id, full_name, city, 
-                   f_customer_total_orders_90d, f_customer_avg_order_value_90d, f_customer_distinct_categories_90d
-            FROM delta.gold.feat_customer_unified
-            WHERE customer_id = '{customer_id}'
-            LIMIT 1
-        """
-        cursor.execute(query)
-        row = cursor.fetchone()
-        cursor.close()
-        conn.close()
-        
-        if row:
-            return {
-                "full_name": row[1] or "Khách hàng VIP",
-                "city": row[2] or "Hồ Chí Minh",
-                "total_orders_90d": row[3] or 5,
-                "avg_order_value_90d": float(row[4] or 150.0),
-                "distinct_categories_90d": row[5] or 3
-            }
-    except Exception as e:
-        print(f"⚠️ Warning: không thể kết nối Trino ({e}). Dùng fallback default.")
-        
-    return {
-        "full_name": f"Khách hàng {customer_id}",
-        "city": "Hồ Chí Minh",
-        "total_orders_90d": 14,
-        "avg_order_value_90d": 320.50,
-        "distinct_categories_90d": 6
-    }
+    """Kết nối Trino đọc dữ liệu batch 90d từ Delta Lake Gold Layer (Trace Span)."""
+    with trace_span("trino.get_offline_features", {"db.system": "trino", "customer_id": customer_id}):
+        try:
+            conn = trino.dbapi.connect(
+                host=TRINO_HOST,
+                port=TRINO_PORT,
+                user=TRINO_USER,
+                catalog=TRINO_CATALOG,
+                schema=TRINO_SCHEMA
+            )
+            cursor = conn.cursor()
+            
+            # Query bảng unified features
+            query = f"""
+                SELECT customer_id, full_name, city, 
+                       f_customer_total_orders_90d, f_customer_avg_order_value_90d, f_customer_distinct_categories_90d
+                FROM delta.gold.feat_customer_unified
+                WHERE customer_id = '{customer_id}'
+                LIMIT 1
+            """
+            cursor.execute(query)
+            row = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            
+            if row:
+                return {
+                    "full_name": row[1] or "Khách hàng VIP",
+                    "city": row[2] or "Hồ Chí Minh",
+                    "total_orders_90d": row[3] or 5,
+                    "avg_order_value_90d": float(row[4] or 150.0),
+                    "distinct_categories_90d": row[5] or 3
+                }
+        except Exception as e:
+            print(f"⚠️ Warning: không thể kết nối Trino ({e}). Dùng fallback default.")
+            
+        return {
+            "full_name": f"Khách hàng {customer_id}",
+            "city": "Hồ Chí Minh",
+            "total_orders_90d": 14,
+            "avg_order_value_90d": 320.50,
+            "distinct_categories_90d": 6
+        }
 
 def get_trending_analytics_from_trino() -> List[Dict[str, Any]]:
-    """Truy vấn Trino để tổng hợp Top 5 sản phẩm/ngành hàng bán chạy nhất từ Delta Lake."""
-    try:
-        conn = trino.dbapi.connect(
-            host=TRINO_HOST,
-            port=TRINO_PORT,
-            user=TRINO_USER,
-            catalog=TRINO_CATALOG,
-            schema=TRINO_SCHEMA
-        )
-        cursor = conn.cursor()
-        
-        query = """
-            SELECT p.category, p.brand, SUM(i.quantity) as total_units_sold, SUM(i.line_net_amount) as total_revenue
-            FROM delta.gold.fact_order_item i
-            JOIN delta.gold.dim_product p ON i.product_id = p.product_id
-            GROUP BY p.category, p.brand
-            ORDER BY total_units_sold DESC
-            LIMIT 5
-        """
-        cursor.execute(query)
-        rows = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        
-        if rows:
-            return [
-                {
-                    "category": r[0] or "General",
-                    "brand": r[1] or "Top Brand",
-                    "total_units_sold": int(r[2] or 0),
-                    "total_revenue": float(r[3] or 0.0)
-                }
-                for r in rows
-            ]
-    except Exception as e:
-        print(f"⚠️ Warning: không thể kết nối Trino lấy Analytics ({e}). Dùng fallback default.")
-        
-    return [
-        {"category": "Thời trang & Phụ kiện", "brand": "Nike", "total_units_sold": 450, "total_revenue": 22500.00},
-        {"category": "Đồ điện tử & Công nghệ", "brand": "Apple", "total_units_sold": 310, "total_revenue": 155000.00},
-        {"category": "Mỹ phẩm & Làm đẹp", "brand": "L'Oreal", "total_units_sold": 280, "total_revenue": 14000.00},
-        {"category": "Nhà cửa & Đời sống", "brand": "IKEA", "total_units_sold": 190, "total_revenue": 9500.00},
-        {"category": "Thể thao & Dã ngoại", "brand": "Adidas", "total_units_sold": 150, "total_revenue": 12000.00}
-    ]
+    """Truy vấn Trino để tổng hợp Top 5 sản phẩm/ngành hàng bán chạy nhất từ Delta Lake (Trace Span)."""
+    with trace_span("trino.get_trending_analytics", {"db.system": "trino", "table": "delta.gold.fact_order_item"}):
+        try:
+            conn = trino.dbapi.connect(
+                host=TRINO_HOST,
+                port=TRINO_PORT,
+                user=TRINO_USER,
+                catalog=TRINO_CATALOG,
+                schema=TRINO_SCHEMA
+            )
+            cursor = conn.cursor()
+            
+            query = """
+                SELECT p.category, p.brand, SUM(i.quantity) as total_units_sold, SUM(i.line_net_amount) as total_revenue
+                FROM delta.gold.fact_order_item i
+                JOIN delta.gold.dim_product p ON i.product_id = p.product_id
+                GROUP BY p.category, p.brand
+                ORDER BY total_units_sold DESC
+                LIMIT 5
+            """
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            
+            if rows:
+                return [
+                    {
+                        "category": r[0] or "General",
+                        "brand": r[1] or "Top Brand",
+                        "total_units_sold": int(r[2] or 0),
+                        "total_revenue": float(r[3] or 0.0)
+                    }
+                    for r in rows
+                ]
+        except Exception as e:
+            print(f"⚠️ Warning: không thể kết nối Trino lấy Analytics ({e}). Dùng fallback default.")
+            
+        return [
+            {"category": "Thời trang & Phụ kiện", "brand": "Nike", "total_units_sold": 450, "total_revenue": 22500.00},
+            {"category": "Đồ điện tử & Công nghệ", "brand": "Apple", "total_units_sold": 310, "total_revenue": 155000.00},
+            {"category": "Mỹ phẩm & Làm đẹp", "brand": "L'Oreal", "total_units_sold": 280, "total_revenue": 14000.00},
+            {"category": "Nhà cửa & Đời sống", "brand": "IKEA", "total_units_sold": 190, "total_revenue": 9500.00},
+            {"category": "Thể thao & Dã ngoại", "brand": "Adidas", "total_units_sold": 150, "total_revenue": 12000.00}
+        ]
 
 # ------------------------------------------------------------------------------
 # API Endpoints
@@ -260,18 +264,18 @@ async def get_trending_analytics():
     )
 
 class ChunkFeatureResponse(BaseModel):
-    chunk_id: str = Field(..., example="CHUNK_000001")
-    doc_id: str = Field(..., example="DOC_POL_001")
-    title: str = Field(..., example="Chính Sách Đổi Trả")
-    category: str = Field(..., example="Policy")
-    chunk_text: str = Field(..., example="Khách hàng có quyền đổi trả...")
-    vector_dim: int = Field(384, example=384)
-    data_source: str = Field("Redis (Online Feature Store)", example="Redis")
+    chunk_id: str = Field(..., json_schema_extra={"example": "CHUNK_000001"})
+    doc_id: str = Field(..., json_schema_extra={"example": "DOC_POL_001"})
+    title: str = Field(..., json_schema_extra={"example": "Chính Sách Đổi Trả"})
+    category: str = Field(..., json_schema_extra={"example": "Policy"})
+    chunk_text: str = Field(..., json_schema_extra={"example": "Khách hàng có quyền đổi trả..."})
+    vector_dim: int = Field(384, json_schema_extra={"example": 384})
+    data_source: str = Field("Redis (Online Feature Store)", json_schema_extra={"example": "Redis"})
     retrieved_at: str = Field(...)
 
 class ChunkSearchResponse(BaseModel):
-    query: str = Field(..., example="bảo hành")
-    total_results: int = Field(..., example=2)
+    query: str = Field(..., json_schema_extra={"example": "bảo hành"})
+    total_results: int = Field(..., json_schema_extra={"example": 2})
     results: List[ChunkFeatureResponse] = Field(...)
     retrieved_at: str = Field(...)
 
@@ -280,50 +284,52 @@ class ChunkSearchResponse(BaseModel):
 # ------------------------------------------------------------------------------
 async def get_chunk_from_redis_or_file(chunk_id: str) -> Optional[Dict[str, Any]]:
     """Kéo dữ liệu Chunk từ Redis Online Feature Store hoặc Lakehouse Gold File."""
-    # 1. Thử lấy từ Redis Online Store theo chuẩn Feast Schema Key (feat_rag_chunks:CHUNK_ID)
-    try:
-        r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
-        key = f"feat_rag_chunks:{chunk_id}"
-        data = await r.hgetall(key)
-        await r.aclose()
-        if data:
-            return data
-    except Exception:
-        pass
-        
-    # 2. Fallback: Lấy từ Lakehouse file
-    lakehouse_file = os.path.join(
-        os.path.dirname(__file__), "..", "data_generation", "data", "processed_chunks", "rag_chunks_gold.json"
-    )
-    if os.path.exists(lakehouse_file):
+    with trace_span("redis.get_rag_chunk", {"chunk_id": chunk_id}):
+        # 1. Thử lấy từ Redis Online Store theo chuẩn Feast Schema Key (feat_rag_chunks:CHUNK_ID)
         try:
-            with open(lakehouse_file, "r", encoding="utf-8") as f:
-                chunks = json.load(f)
-                for c in chunks:
-                    if c["chunk_id"] == chunk_id:
-                        return c
+            r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+            key = f"feat_rag_chunks:{chunk_id}"
+            data = await r.hgetall(key)
+            await r.aclose()
+            if data:
+                return data
         except Exception:
             pass
             
-    return None
+        # 2. Fallback: Lấy từ Lakehouse file
+        lakehouse_file = os.path.join(
+            os.path.dirname(__file__), "..", "data_generation", "data", "processed_chunks", "rag_chunks_gold.json"
+        )
+        if os.path.exists(lakehouse_file):
+            try:
+                with open(lakehouse_file, "r", encoding="utf-8") as f:
+                    chunks = json.load(f)
+                    for c in chunks:
+                        if c["chunk_id"] == chunk_id:
+                            return c
+            except Exception:
+                pass
+                
+        return None
 
 async def search_chunks_by_query(query: str) -> List[Dict[str, Any]]:
     """Tìm kiếm Chunk theo từ khóa trong nội dung văn bản."""
-    lakehouse_file = os.path.join(
-        os.path.dirname(__file__), "..", "data_generation", "data", "processed_chunks", "rag_chunks_gold.json"
-    )
-    results = []
-    if os.path.exists(lakehouse_file):
-        try:
-            with open(lakehouse_file, "r", encoding="utf-8") as f:
-                chunks = json.load(f)
-                query_lower = query.lower()
-                for c in chunks:
-                    if query_lower in c["title"].lower() or query_lower in c["chunk_text"].lower() or query_lower in c["category"].lower():
-                        results.append(c)
-        except Exception:
-            pass
-    return results
+    with trace_span("search_chunks_by_query", {"query": query}):
+        lakehouse_file = os.path.join(
+            os.path.dirname(__file__), "..", "data_generation", "data", "processed_chunks", "rag_chunks_gold.json"
+        )
+        results = []
+        if os.path.exists(lakehouse_file):
+            try:
+                with open(lakehouse_file, "r", encoding="utf-8") as f:
+                    chunks = json.load(f)
+                    query_lower = query.lower()
+                    for c in chunks:
+                        if query_lower in c["title"].lower() or query_lower in c["chunk_text"].lower() or query_lower in c["category"].lower():
+                            results.append(c)
+            except Exception:
+                pass
+        return results
 
 @app.get(
     "/api/v1/chunks/{chunk_id}",

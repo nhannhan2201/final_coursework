@@ -1,0 +1,23 @@
+# ==============================================================================
+# KEDA Autoscaler ScaledObject cho Feature API
+# Tự động co giãn số lượng Pods từ 1 đến 5 theo tải CPU / Lưu lượng
+# ==============================================================================
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: feature-api-scaler
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: feature-api
+  minReplicaCount: 1
+  maxReplicaCount: 5
+  cooldownPeriod: 30
+  pollingInterval: 15
+  triggers:
+  - type: cpu
+    metricType: Utilization
+    metadata:
+      value: "70"

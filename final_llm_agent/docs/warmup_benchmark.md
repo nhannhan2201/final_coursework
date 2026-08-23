@@ -19,7 +19,7 @@ Khi Agent pod mới được tạo (do scale up hoặc restart), nó phải tr�
 ## 🔥 2. Giải Pháp Warm Up (3 Lớp)
 
 ### 2.1. initContainer Warm Up Script
-Trước khi Agent container chính khởi động, một `initContainer` chạy script `warmup.sh` để:
+Trước khi Agent container chính khởi động, một `initContainer` chạy script để:
 - Pre-warm kết nối HTTP tới Feature Store API, Drift API.
 - Pre-warm kết nối tới LLM Inference Gateway.
 - Resolve DNS cache cho tất cả service endpoints.
@@ -28,7 +28,7 @@ Trước khi Agent container chính khởi động, một `initContainer` chạy
 initContainers:
 - name: warmup-init
   image: curlimages/curl:8.9.1
-  command: ["/bin/sh", "/scripts/warmup.sh"]
+  command: ["/bin/sh", "-c", "curl -s http://feature-api-service.default.svc.cluster.local:8000/health && echo 'Warmup completed'"]
 ```
 
 ### 2.2. Startup Probe (Thời Gian Khởi Tạo Nội Bộ)
@@ -44,12 +44,11 @@ startupProbe:
   failureThreshold: 10
 ```
 
-### 2.3. KEDA Warm Pool (idleReplicaCount = 1)
+### 2.3. KEDA Warm Pool (`minReplicaCount = 1`)
 Cấu hình KEDA luôn giữ **tối thiểu 1 pod sẵn sàng** (warm pool) ngay cả khi không có traffic:
 
 ```yaml
 spec:
-  idleReplicaCount: 1
   minReplicaCount: 1
   maxReplicaCount: 5
 ```
@@ -71,26 +70,25 @@ spec:
 
 ---
 
-## 🔧 4. Triển Khai & Kiểm Trả Thực Tế
+## 🔧 4. Triển Khai & Kiểm Tra Thực Tế
 
 ```bash
 # 1. Kiểm tra initContainer đã mồi nước thành công
-kubectl logs -n kagent -l app=ecom-agent -c warmup-init
+kubectl logs -n kagent -l app=coordinator-agent -c warmup-init
 ```
 
 ```text
-Name:    drift-api-service.default.svc.cluster.local
-Address: 34.118.233.232
+{"status":"healthy","service":"Feature Store API"}
 [WARM UP] ✅ Warm-up sequence completed successfully.
 ```
 
 ```bash
 # 2. Kiểm tra KEDA ScaledObject duy trì Warm Pool
-kubectl get scaledobject -n kagent
+kubectl get scaledobject -n default
 ```
 
-```text
-NAME                         SCALETARGETKIND      SCALETARGETNAME           MIN   MAX   READY   ACTIVE
-ecom-agent-warmpool-scaler   apps/v1.Deployment   ecom-agent-warmup-patch   1     5     True    False
-```
-> *(Hệ thống duy trì 1 Pod ở trạng thái Warm Pool sẵn sàng nhận request với độ trễ <1s).*
+> 📸 **MINH CHỨNG WARM UP & LOGS THÀNH CÔNG:**
+>
+> *(Chèn ảnh chụp màn hình terminal kiểm tra logs warmup và trạng thái KEDA ScaledObject tại đây)*
+>
+> ![Warmup Proof](screenshot_warmup_proof.png)

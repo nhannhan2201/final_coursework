@@ -1,0 +1,57 @@
+langfuse:
+  salt:
+    secretKeyRef:
+      name: langfuse-secrets
+      key: salt
+
+  encryptionKey:
+    secretKeyRef:
+      name: langfuse-secrets
+      key: encryptionKey
+
+  nextauth:
+    secret:
+      secretKeyRef:
+        name: langfuse-secrets
+        key: nextauthSecret
+
+# https://github.com/langfuse/langfuse-k8s#configuration
+postgresql:
+  auth:
+    username: langfuse
+    existingSecret: langfuse-postgresql-auth
+    secretKeys:
+      userPasswordKey: password
+  primary:
+    persistence:
+      size: 2Gi
+
+clickhouse:
+  replicaCount: 1
+  shards: 1
+  resourcesPreset: small
+  zookeeper:
+    replicaCount: 1
+  auth:
+    existingSecret: langfuse-clickhouse-auth
+    existingSecretKey: password
+  persistence:
+    size: 4Gi
+
+redis:
+  replica:
+    replicaCount: 0
+  auth:
+    existingSecret: langfuse-redis-auth
+    existingSecretPasswordKey: password
+  master:
+    persistence:
+      size: 1Gi
+
+s3:
+  auth:
+    existingSecret: langfuse-s3-auth
+    rootUserSecretKey: rootUser
+    rootPasswordSecretKey: rootPassword
+  persistence:
+    size: 2Gi

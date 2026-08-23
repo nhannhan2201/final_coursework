@@ -27,7 +27,7 @@ spark = SparkSession.builder \
 
 # Giới hạn log để màn hình terminal sạch sẽ, dễ theo dõi lỗi nếu có
 spark.sparkContext.setLogLevel("WARN")
-print("\n🚀 [HỆ THỐNG] SPARK SESSION ĐS KHỞI TẠO THÀNH CÔNG!")
+print("\n🚀 [HỆ THỐNG] SPARK SESSION ĐÃ KHỞI TẠO THÀNH CÔNG!")
 
 
 # ==============================================================================
@@ -76,5 +76,5 @@ for src_folder, target_table in tables_mapping.items():
     ingest_to_bronze(src_folder, target_table)
 
 print("\n==================================================")
-print("🎉 [HOÀN THÀNH] TOÀN BỘ 5 BẢNG BRONZE ĐÃẰM GỌN TRONG DATALAKE!")
+print("🎉 [HOÀN THÀNH] TOÀN BỘ 5 BẢNG BRONZE ĐÃ NẰM GỌN TRONG DATALAKE!")
 print("==================================================")

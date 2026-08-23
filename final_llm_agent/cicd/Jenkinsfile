@@ -1,0 +1,174 @@
+// ==============================================================================
+// Jenkins Declarative Pipeline cho E-Commerce MLOps & AI Agent System
+// Chuẩn hóa theo kiến trúc CI/CD Pipeline tự động hóa 100%
+// Luồng hoạt động: Push Git ➔ Pytest (36 Tests) ➔ Build & Push Images ➔ Tag Release ➔ Deploy Toàn Bộ Hệ Thống Lên K8s
+// ==============================================================================
+pipeline {
+    agent any
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '5', daysToKeepStr: '5'))
+        timestamps()
+        timeout(time: 30, unit: 'MINUTES')
+        disableConcurrentBuilds()
+    }
+
+    environment {
+        registry = 'nhannguyen2201'
+        registryCredential = 'dockerhub'
+        GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+    }
+
+    stages {
+        // ----------------------------------------------------------------------
+        // GIAI ĐOẠN 1: TẢI MÃ NGUỒN TỪ GIT REPOSITORY
+        // ----------------------------------------------------------------------
+        stage('1. Checkout') {
+            steps {
+                echo "📥 Đang kéo mã nguồn mới nhất tại commit: ${env.GIT_COMMIT_SHORT}..."
+                checkout scm
+            }
+        }
+
+        // ----------------------------------------------------------------------
+        // GIAI ĐOẠN 2: KIỂM THỬ TỰ ĐỘNG (PYTEST SUITE - 36 TESTS)
+        // ----------------------------------------------------------------------
+        stage('2. Automated Test') {
+            steps {
+                echo '🧪 Đang thực thi 36 bài kiểm thử tự động (Unit, Boundary, Property Tests)...'
+                sh '''
+                    export PYTHONPATH=.
+                    pytest tests/ -v --cov=apps --cov-report=term-missing
+                '''
+            }
+        }
+
+        // ----------------------------------------------------------------------
+        // GIAI ĐOẠN 3: ĐÓNG GÓI DOCKER IMAGES & ĐẨY LÊN DOCKER HUB REGISTRY
+        // ----------------------------------------------------------------------
+        stage('3. Build & Push Docker Images') {
+            steps {
+                script {
+                    echo "🐳 Đang đóng gói 4 Docker Images cho Feature API, Drift API, và 2 MCP Servers..."
+                    
+                    def featureImg  = docker.build("${registry}/feature-api:${env.GIT_COMMIT_SHORT}",  "-f apps/feature-api/Dockerfile .")
+                    def driftImg    = docker.build("${registry}/drift-api:${env.GIT_COMMIT_SHORT}",    "-f apps/drift-api/Dockerfile .")
+                    def ecomMcpImg  = docker.build("${registry}/ecom-mcp:${env.GIT_COMMIT_SHORT}",     "-f agentic_ai/ecom-mcp/Dockerfile ./agentic_ai/ecom-mcp")
+                    def driftMcpImg = docker.build("${registry}/drift-mcp:${env.GIT_COMMIT_SHORT}",    "-f agentic_ai/drift-mcp/Dockerfile ./agentic_ai/drift-mcp")
+
+                    echo '🚀 Đang đẩy toàn bộ Docker Images lên kho chứa Docker Hub...'
+                    docker.withRegistry('', registryCredential) {
+                        featureImg.push()
+                        driftImg.push()
+                        ecomMcpImg.push()
+                        driftMcpImg.push()
+
+                        if (env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'master' || env.BRANCH_NAME == 'feature') {
+                            featureImg.push('latest')
+                            driftImg.push('latest')
+                            ecomMcpImg.push('latest')
+                            driftMcpImg.push('latest')
+                        }
+                    }
+                }
+            }
+        }
+
+        // ----------------------------------------------------------------------
+        // GIAI ĐOẠN 4: ĐÁNH DẤU PHIÊN BẢN (SEMANTIC VERSIONING RELEASE)
+        // ----------------------------------------------------------------------
+        stage('4. Semantic Tag Release') {
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'master'
+                    branch 'feature'
+                }
+            }
+            steps {
+                script {
+                    def latestTag = sh(
+                        script: "git describe --tags --abbrev=0 2>/dev/null || echo ''",
+                        returnStdout: true
+                    ).trim()
+                    def logRange = latestTag ? "${latestTag}..HEAD" : "HEAD"
+                    def commits = sh(script: "git log ${logRange} --pretty=%s", returnStdout: true).trim()
+
+                    def bumpType = 'patch'
+                    if (commits.contains('feat!'))      bumpType = 'major'
+                    else if (commits.contains('feat:')) bumpType = 'minor'
+
+                    def baseTag = latestTag ?: 'v0.0.0'
+                    def (major, minor, patch) = baseTag.replaceAll('^v', '').tokenize('.')
+                    def newTag
+                    if (bumpType == 'major')      newTag = "v${major.toInteger() + 1}.0.0"
+                    else if (bumpType == 'minor') newTag = "v${major}.${minor.toInteger() + 1}.0"
+                    else                          newTag = "v${major}.${minor}.${patch.toInteger() + 1}"
+
+                    echo "📌 Đánh tag phiên bản mới: ${bumpType} → ${newTag}"
+                    withCredentials([usernamePassword(credentialsId: 'github', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
+                        sh """
+                            git config user.email "jenkins@ci"
+                            git config user.name "Jenkins CI"
+                            git tag -a ${newTag} -m 'Release ${newTag} [ci skip]' || true
+                            REPO=\$(git remote get-url origin | sed 's|https://github.com/||')
+                            git remote set-url origin https://\${GIT_USER}:\${GIT_TOKEN}@github.com/\${REPO}
+                            git push origin ${newTag} || true
+                        """
+                    }
+                    docker.withRegistry('', registryCredential) {
+                        docker.image("${registry}/feature-api:${env.GIT_COMMIT_SHORT}").push(newTag)
+                        docker.image("${registry}/drift-api:${env.GIT_COMMIT_SHORT}").push(newTag)
+                        docker.image("${registry}/ecom-mcp:${env.GIT_COMMIT_SHORT}").push(newTag)
+                        docker.image("${registry}/drift-mcp:${env.GIT_COMMIT_SHORT}").push(newTag)
+                    }
+                    env.IMAGE_TAG = newTag
+                }
+            }
+        }
+
+        // ----------------------------------------------------------------------
+        // GIAI ĐOẠN 5: TỰ ĐỘNG TRIỂN KHAI TOÀN BỘ HỆ THỐNG LÊN KUBERNETES (CD)
+        // ----------------------------------------------------------------------
+        stage('5. Full System Deployment to Kubernetes') {
+            steps {
+                script {
+                    echo '☸️ Đang tự động triển khai toàn bộ hệ thống lên Kubernetes Cluster...'
+                    withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                        sh '''
+                            # 1. Triển khai Web APIs Backend & NGINX Ingress Gateway
+                            kubectl apply -f apps/deployments/
+
+                            # 2. Triển khai Gateway Routing, ModelConfig & Policy
+                            kubectl apply -f agentic_ai/model-config/
+                            kubectl apply -f agentic_ai/agentgateway-routing.yaml
+                            kubectl apply -f agentic_ai/agentgateway_policy.yaml
+
+                            # 3. Triển khai FastMCP Servers & KAgent Declarative Agents
+                            kubectl apply -f agentic_ai/ecom-mcp/deployments/
+                            kubectl apply -f agentic_ai/drift-mcp/deployments/
+                            kubectl apply -f agentic_ai/coordinator-agent/deployments/
+
+                            # 4. Khởi động lại các Service đảm bảo Zero-Downtime cập nhật image mới nhất
+                            kubectl rollout restart deployment/feature-api -n default || true
+                            kubectl rollout restart deployment/drift-api -n default || true
+                        '''
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo '🧹 Dọn dẹp Workspace sau khi hoàn tất...'
+            cleanWs()
+        }
+        success {
+            echo '🎉 TOÀN BỘ JENKINS PIPELINE ĐÃ CHẠY THÀNH CÔNG RẠNG RỠ! HỆ THỐNG AGENT ĐÃ SẴN SÀNG SỬ DỤNG!'
+        }
+        failure {
+            echo '❌ PIPELINE THẤT BẠI - VUI LÒNG KIỂM TRA LẠI LOGS!'
+        }
+    }
+}

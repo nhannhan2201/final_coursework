@@ -1,147 +1,100 @@
 """
-==============================================================================
-MÔ TẢ FILE: apps/telemetry.py
-------------------------------------------------------------------------------
-Module OpenTelemetry & Prometheus Telemetry Instrumentation cho Web API 
-và MCP Agent Services trong hệ thống E-Commerce MLOps.
-
-Chức năng chính:
-1. Khởi tạo Prometheus Metrics (HTTP Requests, Latency, Tool Calls, LLM Tokens).
-2. Tích hợp FastAPI Middleware ghi nhận thời gian thực (Real-time tracking).
-3. Expose endpoint /metrics cho Prometheus Scraper.
-==============================================================================
+OpenTelemetry Python SDK Instrumentation Module
+Chuẩn hóa theo mã nguồn Downloads/observability/observability/src/telemetry.py
+Khởi tạo và cấu hình TracerProvider, MeterProvider, LoggerProvider
+đẩy toàn bộ Telemetry (Traces, Metrics, Logs) sang OpenTelemetry Collector qua gRPC (:4317).
 """
-
-import time
+import logging
 import os
-from typing import Callable
+from contextlib import contextmanager
+from typing import Optional, Dict, Any, Callable
 from fastapi import FastAPI, Request, Response
-from prometheus_client import (
-    Counter,
-    Histogram,
-    Gauge,
-    generate_latest,
-    CONTENT_TYPE_LATEST,
-)
 
-# ------------------------------------------------------------------------------
-# Prometheus Metrics Definitions
-# ------------------------------------------------------------------------------
+# Khởi tạo mặc định tracer và meter
+tracer = None
+meter = None
 
-# Web API Telemetry Metrics
-HTTP_REQUESTS_TOTAL = Counter(
-    "http_requests_total",
-    "Tổng số lượt HTTP Requests nhận được",
-    ["method", "endpoint", "status"]
-)
+try:
+    from opentelemetry import metrics, trace
+    from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+    from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+    from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+    from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+    from opentelemetry.sdk.metrics import MeterProvider
+    from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-HTTP_REQUEST_DURATION_SECONDS = Histogram(
-    "http_request_duration_seconds",
-    "Thời gian xử lý HTTP Request (seconds)",
-    ["method", "endpoint"],
-    buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
-)
+    # 1. Khởi tạo Resource định danh Service Name
+    svc_name = os.getenv("OTEL_SERVICE_NAME", "ecom-agent-service")
+    resource = Resource.create({"service.name": svc_name})
 
-# Agent & MCP Tool Telemetry Metrics
-MCP_TOOL_CALLS_TOTAL = Counter(
-    "mcp_tool_calls_total",
-    "Tổng số lượt gọi MCP Tool",
-    ["tool_name", "status"]
-)
+    # 2. Khởi tạo Tracer Provider (Distributed Tracing -> Jaeger/Langfuse)
+    tracer_provider = TracerProvider(resource=resource)
+    tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+    trace.set_tracer_provider(tracer_provider)
+    tracer = trace.get_tracer(__name__)
 
-MCP_TOOL_EXECUTION_DURATION_SECONDS = Histogram(
-    "mcp_tool_execution_duration_seconds",
-    "Thời gian thi hành MCP Tool (seconds)",
-    ["tool_name"],
-    buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0]
-)
+    # 3. Khởi tạo Meter Provider (Metrics -> Prometheus/OTel)
+    meter_provider = MeterProvider(
+        resource=resource,
+        metric_readers=[PeriodicExportingMetricReader(OTLPMetricExporter())],
+    )
+    metrics.set_meter_provider(meter_provider)
 
-# LLM Inference Telemetry Metrics
-LLM_PROMPT_TOKENS_TOTAL = Counter(
-    "llm_prompt_tokens_total",
-    "Tổng số Token đầu vào (Prompt Tokens) tiêu tốn cho LLM",
-    ["model"]
-)
+    # 4. Khởi tạo Logger Provider (Centralized Logging -> Elasticsearch/Kibana)
+    logger_provider = LoggerProvider(resource=resource)
+    logger_provider.add_log_record_processor(BatchLogRecordProcessor(OTLPLogExporter()))
 
-LLM_COMPLETION_TOKENS_TOTAL = Counter(
-    "llm_completion_tokens_total",
-    "Tổng số Token đầu ra (Completion Tokens) do LLM sinh ra",
-    ["model"]
-)
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    root.handlers.clear()
+    root.addHandler(logging.StreamHandler())
+    root.addHandler(LoggingHandler(logger_provider=logger_provider))
 
-LLM_REQUEST_DURATION_SECONDS = Histogram(
-    "llm_request_duration_seconds",
-    "Thời gian phản hồi tổng cộng từ LLM Inference Server (seconds)",
-    ["model"],
-    buckets=[0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0]
-)
+except Exception as e:
+    logging.getLogger("telemetry").info(f"OpenTelemetry SDK optional fallback mode: {e}")
 
-# ------------------------------------------------------------------------------
-# FastAPI Telemetry Setup Function
-# ------------------------------------------------------------------------------
+
+# 5. Helpers & FastAPI Telemetry Middleware
+@contextmanager
+def trace_span(span_name: str, attributes: Optional[Dict[str, Any]] = None):
+    """
+    Context manager bọc trace span chuẩn OpenTelemetry SDK.
+    """
+    if tracer is not None:
+        with tracer.start_as_current_span(span_name) as span:
+            if attributes and span.is_recording():
+                for key, val in attributes.items():
+                    span.set_attribute(key, str(val))
+            yield span
+    else:
+        yield None
+
 
 def setup_telemetry(app: FastAPI, service_name: str = "web-api") -> None:
     """
-    Nhúng Prometheus Telemetry Middleware và Endpoint /metrics vào ứng dụng FastAPI.
+    Đăng ký Telemetry middleware cho FastAPI Application.
+    Tự động ghi nhận Traces, Latency và HTTP Status Code.
     """
-    
     @app.middleware("http")
-    async def prometheus_middleware(request: Request, call_next: Callable) -> Response:
-        start_time = time.time()
+    async def telemetry_middleware(request: Request, call_next: Callable) -> Response:
         path = request.url.path
         method = request.method
-        
-        # Bỏ qua không ghi nhận métrics cho chính endpoint /metrics và /health
-        if path in ["/metrics", "/health", "/favicon.ico"]:
+        if tracer is not None:
+            with tracer.start_as_current_span(f"{method} {path}") as span:
+                span.set_attribute("http.method", method)
+                span.set_attribute("http.url", str(request.url))
+                span.set_attribute("http.route", path)
+                try:
+                    response = await call_next(request)
+                    span.set_attribute("http.status_code", response.status_code)
+                    return response
+                except Exception as exc:
+                    span.set_attribute("http.status_code", 500)
+                    span.record_exception(exc)
+                    raise exc from None
+        else:
             return await call_next(request)
-        
-        try:
-            response = await call_next(request)
-            status_code = str(response.status_code)
-        except Exception as exc:
-            status_code = "500"
-            raise exc from None
-        finally:
-            duration = time.time() - start_time
-            HTTP_REQUESTS_TOTAL.labels(method=method, endpoint=path, status=status_code).inc()
-            HTTP_REQUEST_DURATION_SECONDS.labels(method=method, endpoint=path).observe(duration)
-            
-        return response
-
-    @app.get("/metrics", include_in_schema=False)
-    async def metrics_endpoint():
-        """
-        Endpoint trả về định dạng plain-text chuẩn Prometheus cho Prometheus Scraper.
-        """
-        return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
-
-
-# ------------------------------------------------------------------------------
-# Helper Functions cho Agent & LLM Instrumentation
-# ------------------------------------------------------------------------------
-
-def record_mcp_tool_call(tool_name: str, status: str = "success", duration_seconds: float = 0.0) -> None:
-    """
-    Ghi nhận chỉ số gọi MCP Tool (Thành công/Thất bại & Thời gian thi hành).
-    """
-    MCP_TOOL_CALLS_TOTAL.labels(tool_name=tool_name, status=status).inc()
-    if duration_seconds > 0:
-        MCP_TOOL_EXECUTION_DURATION_SECONDS.labels(tool_name=tool_name).observe(duration_seconds)
-
-
-def record_llm_metrics(
-    model: str,
-    prompt_tokens: int,
-    completion_tokens: int,
-    duration_seconds: float = 0.0
-) -> None:
-    """
-    Ghi nhận chỉ số LLM Inference (Prompt Tokens, Completion Tokens & Total Latency).
-    """
-    if prompt_tokens > 0:
-        LLM_PROMPT_TOKENS_TOTAL.labels(model=model).inc(prompt_tokens)
-    if completion_tokens > 0:
-        LLM_COMPLETION_TOKENS_TOTAL.labels(model=model).inc(completion_tokens)
-    if duration_seconds > 0:
-        LLM_REQUEST_DURATION_SECONDS.labels(model=model).observe(duration_seconds)
-

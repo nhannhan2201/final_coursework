@@ -1,287 +1,370 @@
-# 📘 HƯỚNG DẪN TRIỂN KHAI TOÀN DIỆN & MINH CHỨNG DỰ ÁN (MASTER DEPLOYMENT GUIDE)
+# 🚀 HƯỚNG DẪN TRIỂN KHAI TOÀN DIỆN DỰ ÁN TỪ ĐẦU (FROM SCRATCH)
 
-Tài liệu này cung cấp quy trình triển khai chi tiết **từ đầu đến cuối (A đến Z)**, từng bước một (**19 bước, 9 giai đoạn**), kèm hướng dẫn chi tiết về **những gì cần chụp màn hình (Capture)** và **file báo cáo tương ứng** cần đính kèm để thỏa mãn 100% các tiêu chí trong Rubric chấm điểm đồ án.
-
----
-
-## 📋 DANH SÁCH CÁC BƯỚC THỰC THI & CHỤP MINH CHỨNG
-
-### 🏁 Giai Đoạn 1: Kiểm Thử Độc Lập & Xác Minh Cục Bộ (Local Testing)
-
-#### **Bước 1: Chạy Unit Tests & Đo Lường Độ Phủ Mã Nguồn (Code Coverage)**
-* **Hành động:** Chạy bộ kiểm thử tự động 31 bài Unit Tests cho API và MCP Servers.
-  ```bash
-  export PYTHONPATH=.
-  pytest tests/unit/ -v --cov=apps --cov-report=term-missing
-  ```
-* **📸 CẦN CAPTURE MÀN HÌNH:**
-  * Bảng tổng hợp của `pytest-cov` hiển thị danh sách các file trong `apps/` và tỷ lệ coverage chung **đạt trên 90%** (ví dụ: `apps/feature_api.py`, `apps/drift_api.py`).
-  * Đoạn code test có sử dụng `@pytest.mark.parametrize` để minh chứng kỹ thuật phân tích giá trị biên (Boundary Value) và phân hoạch tương đương (Equivalence Partitioning).
-* **📂 LƯU VÀO FILE BÁO CÁO:** [`docs/Testing.md`](./docs/Testing.md) (Mục 1 & 2).
-
-#### **Bước 2: Chạy Kiểm Thử Đột Biến (Mutation Testing) & Property-Based Testing**
-* **Hành động:**
-  1. Cài đặt các gói phụ thuộc bổ sung cho môi trường:
-     ```bash
-     python -m pip install mutmut hypothesis
-     ```
-  2. Chạy công cụ `mutmut` thông qua trình thông dịch của môi trường để chèn đột biến giả lập lỗi code và đánh giá bộ test:
-     ```bash
-     python -m mutmut run
-     python -m mutmut results
-     ```
-  3. Chạy bài kiểm thử sinh dữ liệu ngẫu nhiên có quy luật sử dụng thư viện `Hypothesis`:
-     ```bash
-     pytest tests/property/ -v
-     ```
-* **📸 CẦN CAPTURE MÀN HÌNH:**
-  * Terminal hiển thị Mutation Score của `mutmut` **đạt trên 80%** (số lượng đột biến bị "tiêu diệt" - killed mutants).
-  * Đoạn mã nguồn test sử dụng decorator `@given` của Hypothesis để thực hiện Property-based testing.
-* **📂 LƯU VÀO FILE BÁO CÁO:** [`docs/Testing.md`](./docs/Testing.md) (Mục 3 & 4).
+Tài liệu hướng dẫn quy trình vận hành và triển khai toàn bộ hệ thống **E-Commerce Lakehouse, Multi-Agent & MLOps Infrastructure** từ khi **chưa có gì** đến khi hệ thống hoạt động hoàn chỉnh 100%.
 
 ---
 
-### 🏗️ Giai Đoạn 2: Cấp Phát Hạ Tầng & Triển Khai Data Stack Bằng IaC (Infrastructure as Code)
+## 📑 TỔNG QUAN CÁC GIAI ĐOẠN TRIỂN KHAI
 
-#### **Bước 3: Cấp Phát Máy Chủ Ảo VM & Cụm GKE Đám Mây Bằng Terraform**
-* **Hành động:** Áp dụng Terraform để khởi tạo máy ảo Compute Engine VM và cụm Kubernetes GKE kèm GPU Node Pool (phục vụ mô hình vLLM serving).
-  ```bash
-  cd iac/terraform
-  terraform init
-  terraform apply -auto-approve
-  ```
-* **📸 CẦN CAPTURE MÀN HÌNH:**
-  * Dòng log kết thúc thành công: `Apply complete! Resources: X added, 0 changed, 0 destroyed`.
-  * Trang quản trị Google Cloud Console hiển thị cụm GKE với nhóm máy ảo GPU và Compute Engine VM đang chạy.
-* **📂 LƯU VÀO FILE BÁO CÁO:** [`docs/iac_ansible_terraform.md`](./docs/iac_ansible_terraform.md) (Mục 1).
-
-#### **Bước 4: Tự Động Dựng Data Stack Trực Tiếp Trên VM Bằng Ansible**
-* **Hành động:** Khởi chạy playbook Ansible để tự động SSH vào VM trên GCP, cài Docker, đồng bộ mã nguồn `minicoursework` sang thư mục `/opt/ecom_datalake` trên VM, và bật toàn bộ Data Stack (MinIO, Trino, Airflow, DataHub, Redis) bằng Docker Compose.
-  ```bash
-  cd ../ansible
-  ansible-playbook -i inventory.ini site.yml
-  ```
-* **📸 CẦN CAPTURE MÀN HÌNH:**
-  * Terminal hiển thị bảng kết quả `PLAY RECAP` với trạng thái `failed=0` cho máy chủ VM đích.
-  * Màn hình log Ansible thể hiện việc tự động đồng bộ code và kích hoạt Docker Compose cho Data Stack.
-* **📂 LƯU VÀO FILE BÁO CÁO:** [`docs/iac_ansible_terraform.md`](./docs/iac_ansible_terraform.md) (Mục 2).
+```
+[ GIAI ĐOẠN 1: CẤP PHÁT HẠ TẦNG IaC ]
+   Terraform tạo GKE & VM ➔ Ansible cài đặt Data Stack (MinIO, Trino, Redis, Kafka, Airflow)
+                           │
+                           ▼
+[ GIAI ĐOẠN 2: THIẾT LẬP K8S OPERATORS & INGRESS ]
+   Cài NGINX Ingress Controller, KAgent CRDs, Gateway API, AgentGateway, AgentRegistry (1 lần)
+                           │
+                           ▼
+[ GIAI ĐOẠN 3: THIẾT LẬP JENKINS CI/CD ]
+   Khởi chạy Jenkins Server trên VM ➔ Cấp quyền RBAC Kubeconfig ➔ Cài GitHub Webhook
+                           │
+                           ▼
+[ GIAI ĐOẠN 4: KÍCH HOẠT CI/CD ĐẨY TOÀN BỘ HỆ THỐNG ]
+   Gõ `git push origin main` ➔ Jenkins tự động Test, Build, Push Images, và Deploy K8s
+                           │
+                           ▼
+[ GIAI ĐOẠN 5: VẬN HÀNH & KIỂM TRA CHỨC NĂNG ]
+   Chatbot KAgent UI, Jaeger Tracing, Kibana Logging, Grafana Metrics, KEDA Autoscaling
+```
 
 ---
 
-### 📊 Giai Đoạn 3: Sinh Dữ Liệu & Giả Lập Trôi Lệch Dữ Liệu (Data Drift)
+## 🏗️ GIAI ĐOẠN 1: CẤP PHÁT HẠ TẦNG BẰNG IaC (TERRAFORM & ANSIBLE)
 
-#### **Bước 5: Khởi Chạy Data Generator & Giả Lập Data Drift Trên VM**
-* **Hành động:** Sau khi Ansible đã dựng xong Data Stack trên VM, thực thi script sinh dữ liệu giả lập có cấu hình drift và kiểm tra bảng đặc trưng nhãn (label table) đẩy trực tiếp lên MinIO (`landing-zone`).
-  ```bash
-  # Chạy sinh dữ liệu qua Airflow Scheduler container trên VM
-  docker exec -it ecom_airflow_scheduler python /opt/airflow/project/data_generation/main.py
-  ```
-* **📸 CẦN CAPTURE MÀN HÌNH:**
-  * Nội dung tệp cấu hình sinh dữ liệu `generator_config.yaml`.
-  * Kết quả bảng nhãn (Label Table) sau khi thực hiện ghép nối (Merge / Join) khóa `id` với nhãn phục vụ huấn luyện mô hình.
-* **📂 LƯU VÀO FILE BÁO CÁO:** [`docs/data_generation.md`](./docs/data_generation.md).
+### Bước 1: Khởi Tạo Cụm GKE & Máy Ảo VM Bằng Terraform
+```bash
+cd final_llm_agent/iac/terraform
 
----
+# 1. Khởi tạo Terraform provider
+terraform init
 
-### 🔄 Giai Đoạn 4: Đóng Gói Ảo Hóa & Tích Hợp Liên Tục (CI/CD)
+# 2. Cấp phát tài nguyên trên Google Cloud (GKE Cluster + Compute Engine VM)
+terraform apply -auto-approve
+```
 
-#### **Bước 6: Tự Động Hóa Build & Deploy Thông Qua GitHub Actions / Jenkins**
-* **Hành động:** Push code lên repository để trigger CI/CD pipeline tự động chạy kiểm thử, đóng gói docker image, và cập nhật ứng dụng.
-  ```bash
-  git add .
-  git commit -m "feat: trigger production pipeline"
-  git push origin feature
-  ```
-* **📸 CẦN CAPTURE MÀN HÌNH:**
-  * Sơ đồ chạy thành công (màu xanh lá cây) của các pipelines:
-    1. Pipeline build/test và deploy các API & MCP Servers.
-    2. Pipeline deploy các tác vụ Kubernetes Jobs đồng bộ dữ liệu (Push stream feature sang Offline/Online store).
-* **📂 LƯU VÀO FILE BÁO CÁO:** [`docs/cicd.md`](./docs/cicd.md).
+### Bước 2: Mở Cổng Firewall Cho VM Trên Google Cloud
+Cho phép GitHub gửi Webhook tới Jenkins (Port `8081`) và mở các cổng truy cập:
+```bash
+gcloud compute firewall-rules create allow-cicd-jenkins \
+    --allow tcp:8081,tcp:8080,tcp:8082,tcp:9090,tcp:5601,tcp:16686 \
+    --direction INGRESS \
+    --priority 1000 \
+    --description "Cho phep truy cap Jenkins, Webhook va cac cong Observability"
+```
 
----
+### Bước 3: Tự Động Thiết Lập Data Stack Bằng Ansible
+```bash
+cd ../ansible
 
-### 🤖 Giai Đoạn 5: Triển Khai AI Serving & Kubernetes-native Agents
+# Chạy Ansible Playbook (tự động quét IP VM trên GCP qua Dynamic Inventory):
+ansible-playbook -i inventory.gcp.yml site.yml
+```
 
-#### **Bước 7: Triển Khai Custom Model Server (llm-d) & Model Config**
-* **Hành động:** Cài đặt `kagent-crds` và `agentgateway` bằng Helm theo đúng giáo trình thầy dạy, sau đó deploy cụm Model Server running mô hình Qwen3-0.6B tự phục vụ (Self-host) và áp dụng cấu hình Gateway định tuyến.
-  ```bash
-  # 1. Cài đặt kagent CRDs & Operator qua Helm
-  helm install kagent-crds oci://ghcr.io/kagent-dev/kagent/helm/kagent-crds --namespace kagent --create-namespace
-  helm upgrade --install kagent oci://ghcr.io/kagent-dev/kagent/helm/kagent --namespace kagent --set global.agents.enabled=false --reuse-values
+### Bước 4: Khởi Chạy Pipeline Dữ Liệu & Sinh Dữ Liệu
+Trên máy ảo VM (hoặc qua SSH), chạy generator sinh dữ liệu và kích hoạt Airflow:
+```bash
+# 2. Sinh dữ liệu ban đầu (Batch & RAG Documents) qua container Airflow:
+docker exec -it -u 0 -w /opt/airflow/project/data_generation -e MINIO_ENDPOINT="http://minio:9000" ecom_airflow_scheduler python main.py
+docker exec -it -u 0 -w /opt/airflow/project/data_generation ecom_airflow_scheduler python generate_rag_documents.py
 
-  # 2. Cài đặt Gateway API CRDs & AgentGateway qua Helm (theo giáo trình)
-  kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
-  AGENTGATEWAY_VERSION=v1.3.1
-  helm upgrade --install agentgateway-crds oci://cr.agentgateway.dev/charts/agentgateway-crds --namespace agentgateway-system --create-namespace --version ${AGENTGATEWAY_VERSION}
-  helm upgrade --install agentgateway oci://cr.agentgateway.dev/charts/agentgateway --namespace agentgateway-system --create-namespace --version ${AGENTGATEWAY_VERSION} --set inferenceExtension.enabled=true
+# 3. Chạy luồng giả lập sự kiện Clickstream thời gian thực (Streaming Data -> Kafka):
+docker exec -d -w /opt/airflow/project -e KAFKA_BOOTSTRAP_SERVERS="kafka:29092" -e MINIO_ENDPOINT="http://minio:9000" ecom_airflow_scheduler python data_pipeline/streaming_jobs/kafka_stream_producer.py
 
-  # 3. Deploy Custom Model Server
-  kubectl create namespace llm-d-quickstart --dry-run=client -o yaml | kubectl apply -f -
-  kubectl apply -f deployments/llm_d_modelserver.yaml
-  
-  # 4. Cấu hình Secret, ModelConfig toàn cục và AgentGateway Routing
-  kubectl apply -f ecom-mcp/deployments/groq-secret.yaml
-  kubectl apply -f ecom-mcp/deployments/model-config.yaml
-  kubectl apply -f agentgateway-routing.yaml
-  ```
-* **📸 CẦN CAPTURE MÀN HÌNH:**
-  * Output của lệnh `kubectl get deployment -n llm-d-quickstart` và `kubectl get httproute -n agentgateway-system` chứng minh cấu hình định tuyến của custom model server đã được apply thành công.
-* **📂 LƯU VÀO FILE BÁO CÁO:** [`docs/llm_inference_platform.md`](./docs/llm_inference_platform.md).
-
-#### **Bước 8: Cài Đặt KAgent, Multi-replica Agents Với Phân Quyền Sandbox & Registry**
-* **Hành động:** 
-  1. Triển khai các agents dưới dạng Multi-replica, thiết lập sandbox bảo mật (`runAsNonRoot: true`, cấm truy cập hệ thống file gốc, Drop capabilities):
-     ```bash
-     kubectl apply -f ecom-mcp/deployments/agent.yaml
-     kubectl apply -f drift-mcp/deployments/agent.yaml
-     kubectl apply -f coordinator-agent/deployments/agent.yaml
-     ```
-  2. Deploy AgentRegistry thông qua Helm (theo giáo trình):
-     ```bash
-     helm upgrade -i agentregistry oci://ghcr.io/agentregistry-dev/agentregistry/charts/agentregistry \
-         --namespace agentregistry \
-         --create-namespace \
-         --set config.jwtPrivateKey=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
-         --set image.tag=v0.3.3 \
-         --set database.host=postgres-pgvector.agentregistry.svc.cluster.local \
-         --set database.password=agentregistry \
-         --set database.sslMode=disable
-     ```
-* **📸 CẦN CAPTURE MÀN HÌNH:**
-  * Màn hình thể hiện **Registry đã được deploy thành công** (qua giao diện UI hoặc CLI `kubectl get all -n agentregistry`).
-  * Lệnh `kubectl get pods -n kagent` hiển thị **Multi-replica active** (ví dụ: `ecom-agent-deployment` có 3 replicas chạy song song).
-  * Đoạn cấu hình YAML chứng minh **Agent được giới hạn quyền qua Sandbox** (`securityContext` cô lập).
-  * Giao diện UI Registry hiển thị danh sách các Agent đã được đăng ký công khai (Catalog).
-* **📂 LƯU VÀO FILE BÁO CÁO:** [`docs/agent_registry.md`](./docs/agent_registry.md).
-
-#### **Bước 9: Cấu Hình Agent Warm Up & Tối Ưu Cold Start**
-* **Hành động:** Áp dụng cấu hình Warm Up cho Agent pods: initContainer pre-warm kết nối, startupProbe cho khởi tạo nội bộ, và KEDA warm pool (idle replicas = 1).
-  ```bash
-  kubectl apply -f deployments/warmup_config.yaml
-
-  # Kiểm tra initContainer warmup đã chạy thành công
-  kubectl logs -n kagent <agent-pod-name> -c warmup-init
-  ```
-* **📸 CẦN CAPTURE MÀN HÌNH:**
-  * Benchmark trước/sau Warm Up: thời gian first response giảm từ ~35s xuống ~1s.
-  * `kubectl get scaledobject -n kagent` hiển thị KEDA warm pool đang hoạt động (`idleReplicaCount: 1`).
-* **📂 LƯU VÀO FILE BÁO CÁO:** [`docs/warmup_benchmark.md`](./docs/warmup_benchmark.md).
+# 4. Kích hoạt các DAGs xử lý Bronze ➔ Silver ➔ Gold trên Airflow UI (:8080)
+# Airflow UI: http://<IP_PUBLIC_VM>:8080 (User: airflow / Pass: airflow)
+```
 
 ---
 
-### 🌐 Giai Đoạn 6: Biên Ingress Gateway, Bảo Mật & Tự Động Co Giãn
+## ☸️ GIAI ĐOẠN 2: THIẾT LẬP K8S OPERATORS & INGRESS (CHẠY 1 LẦN DUY NHẤT)
 
-#### **Bước 10: Triển Khai NGINX Ingress Gateway, Rate Limiting & HTTPS**
-* **Hành động:** Thiết lập cổng Ingress mặt tiền, giới hạn tần suất yêu cầu 10 RPS để chống DDoS, phân quyền đăng nhập Basic Auth cho UI thử nghiệm.
-  ```bash
-  kubectl apply -f deployments/nginx_ingress.yaml
-  ```
-* **📸 CẦN CAPTURE MÀN HÌNH:**
-  * Kết quả chạy curl liên tục thể hiện việc **Rate limit 10 RPS hoạt động chính xác** (nhận về mã lỗi HTTP `429 Too Many Requests` khi gửi yêu cầu dồn dập).
-  * Hộp thoại Basic Authentication yêu cầu nhập Username/Password khi truy cập UI chat.
-* **📂 LƯU VÀO FILE BÁO CÁO:** [`docs/ingress_gateway.md`](./docs/ingress_gateway.md).
+Kết nối máy tính của bạn tới cụm GKE vừa tạo:
+```bash
+# Lấy file cấu hình kết nối GKE
+gcloud container clusters get-credentials ecom-kagent-gke-cluster --zone asia-southeast1-b --project k8s-sentiment
+```
 
-#### **Bước 11: Tự Động Co Giãn Nhờ KEDA (Kubernetes Event-Driven Autoscaler)**
-* **Hành động:** Cài đặt KEDA và áp dụng ScaledObjects tự động scale pods dựa trên chỉ số RPS từ Prometheus.
-  ```bash
-  kubectl apply -f deployments/keda/
-  ```
-* **📸 CẦN CAPTURE MÀN HÌNH:**
-  * Trạng thái co giãn thực tế: Khi chạy test tải, số lượng pods tự động tăng từ 1 lên 5 (`kubectl get pods -w` / Grafana co giãn).
-* **📂 LƯU VÀO FILE BÁO CÁO:** [`docs/agent_registry.md`](./docs/agent_registry.md) (Mục Multi-replica & KEDA).
+### Bước 5: Cài Đặt NGINX Ingress Controller
+Cài đặt Controller để Google Cloud cấp 1 địa chỉ **External IP / Load Balancer**:
+```bash
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+helm install nginx-ingress ingress-nginx/ingress-nginx
+```
+
+### Bước 6: Cài Đặt KAgent Operator & Custom Resource Definitions (CRDs) Qua Helm OCI
+```bash
+helm install kagent-crds oci://ghcr.io/kagent-dev/kagent/helm/kagent-crds \
+    --namespace kagent \
+    --create-namespace
+
+helm upgrade --install kagent oci://ghcr.io/kagent-dev/kagent/helm/kagent \
+    --namespace kagent \
+    --set global.agents.enabled=false
+```
+
+### Bước 7: Cài Đặt Kubernetes Gateway API & AgentGateway Operator
+```bash
+# 1. Cài đặt Gateway API & GAIE CRDs
+export GATEWAY_API_VERSION=v1.5.1
+export GAIE_VERSION=v1.5.0
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/${GATEWAY_API_VERSION}/standard-install.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/${GAIE_VERSION}/manifests.yaml
+
+# 2. Cài đặt AgentGateway Operator
+export AGENTGATEWAY_VERSION=v1.3.1
+helm upgrade --install agentgateway-crds \
+    oci://cr.agentgateway.dev/charts/agentgateway-crds \
+    --namespace agentgateway-system \
+    --create-namespace \
+    --version ${AGENTGATEWAY_VERSION}
+
+helm upgrade --install agentgateway \
+    oci://cr.agentgateway.dev/charts/agentgateway \
+    --namespace agentgateway-system \
+    --create-namespace \
+    --version ${AGENTGATEWAY_VERSION} \
+    --set inferenceExtension.enabled=true
+```
+
+### Bước 8: Cài Đặt AgentRegistry (Catalog UI) & KEDA Autoscaler
+```bash
+# 1. Cài đặt AgentRegistry
+helm upgrade -i agentregistry oci://ghcr.io/agentregistry-dev/agentregistry/charts/agentregistry \
+    --namespace agentregistry \
+    --create-namespace \
+    --set config.jwtPrivateKey=$(openssl rand -hex 32) \
+    --set image.tag=v0.3.3 \
+    --set database.host=postgres-pgvector.agentregistry.svc.cluster.local \
+    --set database.password=agentregistry \
+    --set database.sslMode=disable
+
+# 2. Cài đặt KEDA Autoscaler
+helm repo add kedacore https://kedacore.github.io/charts
+helm install keda kedacore/keda --namespace keda --create-namespace
+```
+
+### Bước 9: Triển Khai llm-d ModelServer (vLLM Qwen3-0.6B)
+```bash
+export NAMESPACE=llm-d-quickstart
+kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+
+# 1. Tạo Secret HF_TOKEN cho ModelServer
+kubectl create secret generic llm-d-hf-token \
+    -n ${NAMESPACE} \
+    --from-literal=HF_TOKEN="hf_placeholder" \
+    --dry-run=client -o yaml | kubectl apply -f -
+
+# 2. Deploy ModelServer phục vụ Qwen3-0.6B trên CPU
+export REPO_ROOT=/home/nhan/Downloads/agentic_ai/agentic_ai/llm-d
+export GUIDE_NAME="optimized-baseline"
+export ACCELERATOR_TYPE=cpu
+export MODEL_SERVER=vllm
+
+kubectl apply -n ${NAMESPACE} -k ${REPO_ROOT}/guides/${GUIDE_NAME}/modelserver/${ACCELERATOR_TYPE}/${MODEL_SERVER}/
+
+# 3. Tối ưu hóa định mức CPU/RAM cho máy e2-standard-4 (2 vCPUs / 4GiB)
+kubectl set resources deployment optimized-baseline-cpu-vllm-decode -n ${NAMESPACE} --requests=cpu=2,memory=4Gi --limits=cpu=3,memory=6Gi
+```
+
+### Bước 10: Cài Đặt Phân Hệ Observability Stack Bằng Helm (OTel, EFK, Jaeger, Prometheus, Langfuse)
+*(Theo đúng chuẩn hướng dẫn trong `observability/README.md`)*
+```bash
+# 1. Cài đặt OpenTelemetry Collector
+helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+kubectl create ns monitoring --dry-run=client -o yaml | kubectl apply -f -
+helm install opentelemetry-collector open-telemetry/opentelemetry-collector -n monitoring -f observability/helm_charts/otel/values.yaml
+
+# 2. Cài đặt Elasticsearch & Kibana (EFK Logging)
+helm repo add elastic https://helm.elastic.co && helm repo update
+helm install elastic-operator elastic/eck-operator -n elastic-system --create-namespace
+helm install elastic elastic/eck-stack -n monitoring -f observability/helm_charts/kibana/values.yaml
+
+# 3. Cài đặt Jaeger Tracing
+helm repo add jaegertracing https://jaegertracing.github.io/helm-charts
+helm install jaeger jaegertracing/jaeger -n monitoring
+
+# 4. Cài đặt Prometheus & Grafana
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm install kube-prometheus-stack oci://ghcr.io/prometheus-community/charts/kube-prometheus-stack \
+  --namespace monitoring \
+  --set prometheus.prometheusSpec.additionalArgs[0].name=web.enable-otlp-receiver \
+  --set prometheus.prometheusSpec.additionalArgs[0].value="" \
+  --set coreDns.enabled=false
+
+# 5. Cài đặt Langfuse LLM Observability
+kubectl create secret generic langfuse-secrets -n monitoring \
+  --from-literal=salt="$(openssl rand -base64 32)" \
+  --from-literal=nextauthSecret="$(openssl rand -base64 32)" \
+  --from-literal=encryptionKey="$(openssl rand -hex 32)" --dry-run=client -o yaml | kubectl apply -f -
+kubectl create secret generic langfuse-postgresql-auth -n monitoring --from-literal=password="$(openssl rand -hex 24)" --dry-run=client -o yaml | kubectl apply -f -
+kubectl create secret generic langfuse-clickhouse-auth -n monitoring --from-literal=password="$(openssl rand -hex 24)" --dry-run=client -o yaml | kubectl apply -f -
+kubectl create secret generic langfuse-redis-auth -n monitoring --from-literal=password="$(openssl rand -hex 24)" --dry-run=client -o yaml | kubectl apply -f -
+kubectl create secret generic langfuse-s3-auth -n monitoring --from-literal=rootUser="langfuse-admin" --from-literal=rootPassword="$(openssl rand -base64 24)" --dry-run=client -o yaml | kubectl apply -f -
+kubectl create secret generic langfuse-otel-auth -n monitoring --from-literal=basicAuth="$(printf '%s' 'pk-lf-placeholder:sk-lf-placeholder' | base64 -w0)" --dry-run=client -o yaml | kubectl apply -f -
+
+helm repo add langfuse https://langfuse.github.io/langfuse-k8s
+helm install langfuse langfuse/langfuse --version 1.5.41 -n monitoring -f observability/helm_charts/langfuse/values.yaml
+```
 
 ---
 
-### 📊 Giai Đoạn 7: Giám Sát, Logging, Tracing, A/B Testing & Quản Trị Dữ Liệu
+## 🔄 GIAI ĐOẠN 3: KHỞI CHẠY JENKINS CI/CD SERVER TRÊN VM
 
-#### **Bước 12: Triển Khai EFK Logging Stack & Jaeger Distributed Tracing**
-* **Hành động:** Deploy hệ thống thu thập log tập trung (EFK) và hệ thống theo dõi luồng yêu cầu phân tán (Jaeger).
-  ```bash
-  # 1. Deploy EFK Stack (Elasticsearch + Fluent Bit + Kibana)
-  kubectl apply -f deployments/efk_logging.yaml
+### Bước 11: Khởi Chạy Jenkins Container Bằng Docker Compose
+Trên máy ảo VM:
+```bash
+cd final_llm_agent/cicd
+docker compose up -d
+```
+*Lấy mật khẩu ban đầu của Jenkins:*
+```bash
+docker exec -it jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+```
+Truy cập: **`http://<IP_PUBLIC_VM>:8081`** để hoàn tất cài đặt plugin cơ bản.
 
-  # 2. Deploy Jaeger + OpenTelemetry Collector
-  kubectl apply -f deployments/jaeger_tracing.yaml
-  ```
-* **📸 CẦN CAPTURE MÀN HÌNH:**
-  * Giao diện **Kibana Discover** hiển thị logs từ các pods (`feature-api`, `drift-api`, `ecom-mcp`).
-  * Giao diện **Jaeger UI** hiển thị distributed trace của một request đi qua Feature API → Redis → Trino.
-* **📂 LƯU VÀO FILE BÁO CÁO:** [`docs/logging_tracing.md`](./docs/logging_tracing.md).
+### Bước 12: Cấu Hình Phân Quyền RBAC Cho Jenkins Trên K8s
+Tạo ServiceAccount `jenkins` với quyền cluster-admin để Jenkins deploy ứng dụng:
+```bash
+# 1. Tạo ServiceAccount và RoleBinding
+kubectl create serviceaccount jenkins -n default
+kubectl create clusterrolebinding jenkins --clusterrole=cluster-admin --serviceaccount=default:jenkins
 
-#### **Bước 13: Đo Lường & Giám Sát Metrics Hệ Thống (Observability)**
-* **Hành động:** Port-forward các dịch vụ giám sát và quan sát chỉ số vận hành thời gian thực.
-  ```bash
-  # Grafana Metrics Dashboard
-  kubectl port-forward -n default svc/grafana 3000:80
+# 2. Tạo Secret Token dài hạn
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: jenkins-token
+  namespace: default
+  annotations:
+    kubernetes.io/service-account.name: jenkins
+type: kubernetes.io/service-account-token
+EOF
 
-  # Kibana Logging Dashboard
-  kubectl port-forward -n logging svc/kibana 5601:5601
+# 3. Tạo file kubeconfig cho Jenkins
+TOKEN=$(kubectl get secret jenkins-token -n default -o jsonpath='{.data.token}' | base64 -d)
+CA_DATA=$(kubectl config view --raw --minify --flatten -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')
+SERVER_URL=$(kubectl config view --raw --minify --flatten -o jsonpath='{.clusters[0].cluster.server}')
 
-  # Jaeger Tracing Dashboard
-  kubectl port-forward -n tracing svc/jaeger 16686:16686
-  ```
-* **📸 CẦN CAPTURE MÀN HÌNH:**
-  * Panel hiển thị **Web API metrics** (RPS, CPU/RAM) — Grafana `http://localhost:3000`.
-  * Panel hiển thị **LLM telemetry** (độ trễ TTFT, số lượng input/output tokens) — Grafana.
-  * Panel hiển thị **Agent telemetry** (số lần Coordinator Agent / Ecom Agent được gọi, số lần MCP tools được chạy) — Grafana.
-  * **Logs Dashboard** — Kibana `http://localhost:5601`.
-  * **Traces Dashboard** — Jaeger `http://localhost:16686`.
-* **📂 LƯU VÀO FILE BÁO CÁO:** [`docs/observability.md`](./docs/observability.md) & [`docs/logging_tracing.md`](./docs/logging_tracing.md).
+cat <<EOF > kubeconfig
+apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: ${SERVER_URL}
+    certificate-authority-data: ${CA_DATA}
+  name: gke
+contexts:
+- context:
+    cluster: gke
+    user: jenkins
+  name: gke
+current-context: gke
+users:
+- name: jenkins
+  user:
+    token: ${TOKEN}
+EOF
+```
 
-
-#### **Bước 15: Đồng Bộ Dữ Liệu RAG & Đảm Bảo Data Governance Trên DataHub**
-* **Hành động:** Khởi chạy Airflow DAG nạp dữ liệu, tạo embeddings vector lưu vào Feast, đồng bộ metadata sang DataHub.
-* **📸 CẦN CAPTURE MÀN HÌNH:**
-  * Màn hình Airflow DAG chạy thành công 100%.
-  * **Sơ đồ Data Lineage và Assertions trên DataHub** thể hiện nguồn gốc từ text ➔ Gold ➔ Feast Feature Store.
-* **📂 LƯU VÀO FILE BÁO CÁO:** [`docs/data_governance.md`](./docs/data_governance.md).
-
-#### **Bước 16: Bảo Mật Secrets Tập Trung & Ứng Dụng Design Patterns**
-* **Hành động:** 
-  1. Kiểm tra cấu hình Secrets tập trung trong cụm.
-  2. Xác định các Class trong mã nguồn thực thi Strategy Pattern và Adapter Pattern.
-* **📸 CẦN CAPTURE MÀN HÌNH:**
-  * Màn hình quản trị Secrets tập trung (kubectl / Vault).
-  * Đoạn mã nguồn trong dự án thể hiện cách viết Strategy Pattern (chọn thuật toán drift) và Adapter Pattern (thích ứng các database Feature Store).
-* **📂 LƯU VÀO FILE BÁO CÁO:** [`docs/security_secrets.md`](./docs/security_secrets.md) & [`docs/design_patterns.md`](./docs/design_patterns.md).
-
----
-
-### 💬 Giai Đoạn 8: Tương Tác Trực Tiếp & Kiểm Nghiệm Nghiệp Vụ (Chat & Notebook Validation)
-
-#### **Bước 17: Chạy UI Chat Trực Tiếp Với Agent**
-* **Hành động:** 
-  1. Port-forward UI chat:
-     ```bash
-     kubectl port-forward -n kagent svc/kagent-ui 8080:8080
-     ```
-  2. Mở trình duyệt truy cập `http://localhost:8080` và thực hiện trò chuyện với Coordinator Agent.
-* **📸 CẦN CAPTURE MÀN HÌNH:**
-  * Giao diện UI Chat hiển thị cuộc trò chuyện thực tế: Người dùng yêu cầu tư vấn mua sắm, Agent tự động gọi MCP tools lấy dữ liệu từ Feature Store và trả về kết quả cá nhân hóa.
-* **📂 LƯU VÀO FILE BÁO CÁO:** [`docs/agent_registry.md`](./docs/agent_registry.md).
-
-#### **Bước 18: Chạy Jupyter Notebook Demo Agent Tương Tác Với MCP Servers**
-* **Hành động:** Khởi chạy Jupyter Notebook để minh chứng Agent gọi trực tiếp MCP Tools kéo dữ liệu từ Feature Store, phân tích Drift, và RAG context retrieval.
-  ```bash
-  # Port-forward KAgent API trước
-  kubectl port-forward -n kagent svc/kagent-controller-manager 8083:8083
-
-  # Mở Jupyter Notebook
-  jupyter notebook notebooks/agent_demo.ipynb
-  ```
-* **📸 CẦN CAPTURE MÀN HÌNH:**
-  * Output của notebook cell gọi `get_customer_shopping_context` → kết quả Feature Store trả về.
-  * Output của notebook cell gọi `detect_feature_drift` → kết quả Drift Detection.
-  * Output của notebook cell Coordinator Agent tổng hợp đa MCP tools.
-* **📂 LƯU VÀO FILE BÁO CÁO:** [`docs/agent_registry.md`](./docs/agent_registry.md) (Mục Jupyter Notebook Demo).
+### Bước 13: Thiết Lập Credentials Trên Jenkins & Webhook Trên GitHub
+1. **Trên Jenkins (`http://<IP_PUBLIC_VM>:8081/credentials`):**
+   - **`github`** (Username with Password): Username GitHub + GitHub PAT (Personal Access Token).
+   - **`dockerhub`** (Username with Password): Username `nhannguyen2201` + Docker Hub Token.
+   - **`kubeconfig`** (Secret File): Tải file `kubeconfig` vừa tạo ở bước trên lên.
+2. **Trên GitHub Repository:**
+   - Vào **Settings ➔ Webhooks ➔ Add webhook**.
+   - Payload URL: `http://<IP_PUBLIC_VM>:8081/github-webhook/`
+   - Content type: `application/json`
+   - Event: `Just the push event`.
 
 ---
 
-### 🧹 Giai Đoạn 9: Dọn Dẹp Tài Nguyên Đám Mây (Clean Up)
+## 🚀 GIAI ĐOẠN 4: KÍCH HOẠT CI/CD TỰ ĐỘNG TRIỂN KHAI TOÀN BỘ HỆ THỐNG
 
-#### **Bước 19: Destroy Hạ Tầng Tránh Phát Sinh Chi Phí**
-* **Hành động:** Thực hiện dọn dẹp sau khi kiểm tra xong:
-  ```bash
-  cd iac/terraform
-  terraform destroy -auto-approve
-  ```
+Bây giờ hạ tầng đã sẵn sàng 100%. Bạn chỉ cần push code lên GitHub:
+
+```bash
+git add .
+git commit -m "feat: deploy entire ecommerce ai agent and mlops system"
+git push origin main
+```
+
+**Jenkins sẽ tự động thực thi 5 giai đoạn liên hoàn:**
+1. **Stage 1 (Checkout):** Tải commit mới nhất.
+2. **Stage 2 (Test):** Chạy tự động **36 test cases** Pytest (`pytest tests/ -v`).
+3. **Stage 3 (Build & Push):** Đóng gói và đẩy 4 images (`feature-api`, `drift-api`, `ecom-mcp`, `drift-mcp`) lên Docker Hub.
+4. **Stage 4 (Tag Release):** Gắn Semantic Tag Release (`vX.Y.Z`) lên GitHub.
+5. **Stage 5 (Deploy):** Tự động áp dụng toàn bộ manifests ứng dụng lên K8s:
+   - Triển khai Backend REST APIs & NGINX Ingress (`apps/deployments/`).
+   - Triển khai ModelConfig & AgentGateway (`agentic_ai/model-config/`, `agentgateway-routing.yaml`, `agentgateway_policy.yaml`).
+   - Triển khai FastMCP Servers & Coordinator Agent (`agentic_ai/ecom-mcp/`, `agentic_ai/drift-mcp/`, `agentic_ai/coordinator-agent/`).
+   - Zero-Downtime Rollout Restart toàn bộ Pods.
+
+---
+
+## 🎯 GIAI ĐOẠN 5: TRẢI NGHIỆM & VẬN HÀNH HỆ THỐNG LIVE
+
+### 1. Trò Chuyện Trực Tiếp Với AI Agent Qua KAgent UI
+Mở port-forward vào giao diện Chatbot:
+```bash
+kubectl port-forward -n kagent svc/kagent-ui 8080:8080
+```
+Truy cập: **`http://localhost:8080`** và thử các câu lệnh:
+- **Tư vấn khách hàng:** `"Cho tôi xem hồ sơ và lịch sử mua sắm của khách hàng CUST_000001"` ➔ Agent tự động gọi `ecom-mcp` lấy feature từ Redis/Trino.
+- **Phân tích xu hướng:** `"Xu hướng sản phẩm nào đang bán chạy nhất?"` ➔ Agent tự động gọi `ecom-mcp` phân tích Gold Layer.
+- **Giám sát trôi lệch dữ liệu:** `"Kiểm tra xem dữ liệu streaming feature f_stream_views_30m có bị drift không?"` ➔ Agent tự động gọi `drift-mcp` tính toán KS-test & PSI score.
+
+---
+
+### 2. Xem Distributed Tracing Trên Jaeger UI
+```bash
+kubectl port-forward -n monitoring svc/jaeger 16686:16686
+```
+Truy cập: **`http://localhost:16686`** ➔ Chọn service `ecom-agent-service` hoặc `feature-api` ➔ Xem toàn bộ timeline chi tiết từng mili-giây truy vấn Redis và Trino.
+
+---
+
+### 3. Tra Cứu Log Tập Trung Trên Kibana UI
+```bash
+kubectl port-forward -n monitoring svc/elastic-eck-kibana-kb-http 5601:5601
+```
+Truy cập: **`https://localhost:5601`** (User: `elastic` / Pass lấy từ secret `elasticsearch-es-elastic-user`) ➔ Vào mục **Discover** ➔ Tìm kiếm log theo từ khóa `level: ERROR` hoặc `customer_id`.
+
+---
+
+### 4. Giám Sát Hiệu Năng Thời Gian Thực Trên Grafana
+```bash
+kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 8082:80
+```
+Truy cập: **`http://localhost:8082`** (User: `admin` / Pass: `kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath="{.data.admin-password}" | base64 -d`) ➔ Mở Dashboard **E-Commerce Agent Observability** để xem 5 biểu đồ:
+1. Throughput (RPS)
+2. P95 / P99 Latency
+3. Error Rate (5xx/4xx)
+4. Data Drift Detection Rate
+5. Active Connections
+
+---
+
+### 5. Giám Sát LLM Traces & Tokens Trên Langfuse UI
+```bash
+kubectl port-forward -n monitoring svc/langfuse-web 3000:3000
+```
+Truy cập: **`http://localhost:3000`** ➔ Xem chi tiết từng lượt gọi Agent, Prompt Tokens, Completion Tokens và độ trễ sinh từ đầu tiên (TTFT).
+
+---
+
+### 6. Kiểm Tra Tự Động Co Giãn Tải KEDA & Rate Limiting 10 RPS
+Lấy Public IP của NGINX Ingress:
+```bash
+INGRESS_IP=$(kubectl get ingress ecom-agentic-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+# Gửi 15 request liên tục trong 1 giây để kiểm tra Rate Limiting (10 RPS)
+for i in {1..15}; do curl -s -o /dev/null -w "%{http_code}\n" http://${INGRESS_IP}/api/v1/features/health; done
+# Kết quả: 10 request đầu trả về 200 OK, các request vượt ngưỡng trả về 429 Too Many Requests
+
+# Kiểm tra trạng thái KEDA tự động scale Pods từ 1 -> 5 khi tải tăng
+kubectl get scaledobject -A
+kubectl get pods -l app=feature-api -w
+```

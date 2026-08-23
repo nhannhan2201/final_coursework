@@ -1,0 +1,19 @@
+version: '3.8'
+services:
+  jenkins:
+    image: nhannguyen2201/jenkins:lts 
+    container_name: jenkins
+    restart: unless-stopped
+    # Always pull the latest image to ensure you have the most recent updates 
+    # and security patches.
+    pull_policy: always
+    ports:
+      - 8081:8080
+      - 50000:50000
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/nhan/.config/gcloud:/root/.config/gcloud
+
+volumes:
+  jenkins_home:

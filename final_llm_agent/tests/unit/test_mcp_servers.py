@@ -14,13 +14,19 @@ from unittest.mock import patch, MagicMock
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-# Dynamic import for ecom-mcp/server.py
-ecom_spec = importlib.util.spec_from_file_location("ecom_server", os.path.join(PROJECT_ROOT, "ecom-mcp", "server.py"))
+# Dynamic import for agentic_ai/ecom-mcp/server.py
+ecom_path = os.path.join(PROJECT_ROOT, "agentic_ai", "ecom-mcp", "server.py")
+if not os.path.exists(ecom_path):
+    ecom_path = os.path.join(PROJECT_ROOT, "ecom-mcp", "server.py")
+ecom_spec = importlib.util.spec_from_file_location("ecom_server", ecom_path)
 ecom_server = importlib.util.module_from_spec(ecom_spec)
 ecom_spec.loader.exec_module(ecom_server)
 
-# Dynamic import for drift-mcp/server.py
-drift_spec = importlib.util.spec_from_file_location("drift_server", os.path.join(PROJECT_ROOT, "drift-mcp", "server.py"))
+# Dynamic import for agentic_ai/drift-mcp/server.py
+drift_path = os.path.join(PROJECT_ROOT, "agentic_ai", "drift-mcp", "server.py")
+if not os.path.exists(drift_path):
+    drift_path = os.path.join(PROJECT_ROOT, "drift-mcp", "server.py")
+drift_spec = importlib.util.spec_from_file_location("drift_server", drift_path)
 drift_server = importlib.util.module_from_spec(drift_spec)
 drift_spec.loader.exec_module(drift_server)
 

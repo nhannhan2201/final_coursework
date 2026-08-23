@@ -81,7 +81,7 @@ def merge_unified_features():
     # ==============================================================================
     # BƯỚC 2: GHI BẢNG STREAM 60M XUỐNG MINIO (BẮT BUỘC THEO SPEC)
     # ==============================================================================
-    stream_path = "s3a://datalake/gold/feat_stream"
+    stream_path = "s3a://datalake/gold/feat_stream_60m"
     if not DeltaTable.isDeltaTable(spark, stream_path):
         stream_df.write.format("delta").mode("overwrite").save(stream_path)
         print("✔️ Đã khởi tạo thành công bảng feat_stream_60m trên MinIO (Gold Layer)!")

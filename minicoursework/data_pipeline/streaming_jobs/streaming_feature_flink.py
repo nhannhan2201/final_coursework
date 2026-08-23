@@ -14,8 +14,10 @@ from pyflink.common import Duration
 # ==============================================================================
 env = StreamExecutionEnvironment.get_execution_environment()
 
-# Thêm gói JAR kết nối Kafka (Hãy đảm bảo bạn đã tải file này về hoặc cấu hình đúng)
-env.add_jars("file:////home/nhan/Projects/minicoursework/jars/flink-sql-connector-kafka-1.17.1.jar")
+# Thêm gói JAR kết nối Kafka (Tự động định vị file JAR từ thư mục dự án)
+jar_path = os.path.join(os.path.dirname(__file__), "..", "..", "jars", "flink-sql-connector-kafka-1.17.1.jar")
+if os.path.exists(jar_path):
+    env.add_jars(f"file://{os.path.abspath(jar_path)}")
 
 
 # ==============================================================================

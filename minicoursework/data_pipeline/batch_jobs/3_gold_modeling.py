@@ -28,7 +28,6 @@ spark.sparkContext.setLogLevel("WARN")
 print("\n🚀 [HỆ THỐNG] SPARK SESSION LỚP GOLD ĐÃ SẴN SÀNG CHẠY THEO SPEC MỚI!")
 
 # Đọc dữ liệu đầu vào từ tầng Silver sạch
-# Đọc dữ liệu đầu vào từ tầng Silver sạch
 stg_products = spark.read.format("delta").load("s3a://datalake/silver/stg_products")
 stg_customers = spark.read.format("delta").load("s3a://datalake/silver/stg_customers")
 stg_order_items = spark.read.format("delta").load("s3a://datalake/silver/stg_order_items")
