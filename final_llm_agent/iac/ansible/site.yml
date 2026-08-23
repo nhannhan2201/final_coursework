@@ -1,0 +1,8 @@
+---
+- name: Provision and Deploy Data Stack on Compute VM
+  hosts: data_stack_vm
+  become: yes
+  gather_facts: yes
+  roles:
+    - docker_install
+    - docker_deploy

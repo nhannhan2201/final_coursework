@@ -1,0 +1,20 @@
+# ==============================================================================
+# KMCP MCPServer CRD cho E-Commerce Feature Store MCP Tool
+# Deploy FastMCP server dưới dạng Kubernetes-native MCP Server
+# ==============================================================================
+apiVersion: kagent.dev/v1alpha1
+kind: MCPServer
+metadata:
+  name: ecom-mcp
+  namespace: kagent
+spec:
+  transportType: http
+  deployment:
+    image: nhannguyen2201/ecom-mcp:0.0.1
+    imagePullPolicy: IfNotPresent
+    port: 8000
+    env:
+      FEATURE_API_URL: "http://feature-api-service.default.svc.cluster.local:8000"
+  httpTransport:
+    targetPort: 8000
+    path: /mcp

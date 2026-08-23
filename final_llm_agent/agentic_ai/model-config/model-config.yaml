@@ -1,0 +1,18 @@
+# ==============================================================================
+# ModelConfig CRD: llm-d Self-Hosted Inference Platform (Qwen3-0.6B Model)
+# Cấu hình kết nối LLM dùng chung cho toàn bộ KAgent Agents
+# ==============================================================================
+apiVersion: kagent.dev/v1alpha2
+kind: ModelConfig
+metadata:
+  name: llm-d-model-config
+  namespace: kagent
+spec:
+  provider: OpenAI
+  model: Qwen/Qwen3-0.6B
+  # Secret reference nội bộ cho KAgent client
+  apiKeySecret: llm-secret
+  apiKeySecretKey: api-key
+  openAI:
+    baseUrl: "http://llm-d-inference-gateway.llm-d-quickstart.svc.cluster.local/v1"
+    timeout: 60
