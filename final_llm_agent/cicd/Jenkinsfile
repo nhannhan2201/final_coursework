@@ -79,10 +79,8 @@ pipeline {
         // ----------------------------------------------------------------------
         stage('4. Semantic Tag Release') {
             when {
-                anyOf {
-                    branch 'main'
-                    branch 'master'
-                    branch 'feature'
+                expression {
+                    return true
                 }
             }
             steps {
