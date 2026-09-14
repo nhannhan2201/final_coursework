@@ -147,17 +147,24 @@ pipeline {
             steps {
                 script {
                     echo '☸️ Đang tự động triển khai toàn bộ hệ thống lên Kubernetes Cluster...'
+                    def targetTag = env.IMAGE_TAG ?: env.GIT_COMMIT_SHORT
+                    echo "🚀 Đang triển khai các FastMCP Servers với Image Tag: ${targetTag}"
+
                     withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                        sh '''
-                            # 1. Triển khai ModelConfig & Tracing Policy cho AI Gateway
+                        sh """
+                            # 1. Tự động bơm Tag phiên bản mới (${targetTag}) vào các file YAML của FastMCP
+                            sed -i "s|nhannguyen2201/ecom-mcp:.*|nhannguyen2201/ecom-mcp:${targetTag}|g" final_llm_agent/agentic_ai/ecom-mcp/deployments/mcp-server.yaml
+                            sed -i "s|nhannguyen2201/drift-mcp:.*|nhannguyen2201/drift-mcp:${targetTag}|g" final_llm_agent/agentic_ai/drift-mcp/deployments/mcp-server.yaml
+
+                            # 2. Triển khai ModelConfig & Tracing Policy cho AI Gateway
                             kubectl apply -f final_llm_agent/agentic_ai/model-config/
                             kubectl apply -f final_llm_agent/agentic_ai/agentgateway_policy.yaml
 
-                            # 2. Triển khai FastMCP Servers & KAgent Declarative Agents
+                            # 3. Triển khai FastMCP Servers với Image Tag mới & KAgent Declarative Agents
                             kubectl apply -f final_llm_agent/agentic_ai/ecom-mcp/deployments/
                             kubectl apply -f final_llm_agent/agentic_ai/drift-mcp/deployments/
                             kubectl apply -f final_llm_agent/agentic_ai/coordinator-agent/deployments/
-                        '''
+                        """
                     }
                 }
             }
