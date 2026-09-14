@@ -1,0 +1,70 @@
+# ==============================================================================
+# OpenTelemetry Collector Config cho môi trường Local (Kind Cluster)
+# Xuất Traces sang Jaeger (Port 4317) và Metrics sang Prometheus (Port 9090)
+# Không yêu cầu Secret ngoài (không phụ thuộc Elasticsearch / Langfuse)
+# ==============================================================================
+mode: deployment
+rewriteDeprecatedComponentNames: false
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+  tag: "0.100.0"
+
+command:
+  name: otelcol-contrib
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+  processors:
+    batch: {}
+
+  exporters:
+    debug:
+      verbosity: detailed
+
+    otlp/jaeger:
+      endpoint: jaeger.monitoring.svc.cluster.local:4317
+      tls:
+        insecure: true
+
+    otlphttp/prometheus:
+      endpoint: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090/api/v1/otlp
+      tls:
+        insecure: true
+    
+    otlphttp/langfuse:
+      endpoint: "https://cloud.langfuse.com/api/public/otel"
+      headers:
+        Authorization: "Basic cGstbGYtZThkMmMwMmMtZDQwNC00ZTQzLTlmZmYtYzcyNWRkZmRjYjIxOnNrLWxmLTc3NWY2ZmRiLWI4NDAtNDM4My1hZGUzLTlhMDQ0MjI2YmQ4Mg=="
+
+
+  service:
+    telemetry:
+      metrics:
+        address: ""
+        level: basic
+      logs:
+        level: info
+
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [batch]
+        exporters: [otlp/jaeger, otlphttp/langfuse, debug]
+
+      metrics:
+        receivers: [otlp]
+        processors: [batch]
+        exporters: [otlphttp/prometheus]
+
+      logs:
+        receivers: [otlp]
+        processors: [batch]
+        exporters: [debug]

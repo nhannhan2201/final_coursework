@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy application source code
-COPY server.py .
+COPY server.py telemetry.py .
 
 EXPOSE 8000
 

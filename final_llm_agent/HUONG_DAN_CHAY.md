@@ -29,6 +29,261 @@ Tài liệu hướng dẫn quy trình vận hành và triển khai toàn bộ h�
 
 ---
 
+## 🗺️ LỰA CHỌN PHƯƠNG ÁN TRIỂN KHAI
+
+Hệ thống hỗ trợ 2 lộ trình triển khai hoàn chỉnh:
+
+* **🌟 PHẦN A (KHUYÊN DÙNG ĐẦU TIÊN): TRIỂN KHAI & TEST 100% CỤC BỘ (LOCAL DATA & AI AGENT)**
+  * **Mục tiêu:** Chạy toàn bộ Data Stack (MinIO, Trino, Redis, Kafka, Airflow) bằng Docker Compose và hệ thống Agentic AI (KAgent, llm-d vLLM, FastMCP) trên cụm K8s Kind cục bộ.
+  * **Ưu điểm:** **Zero chi phí Cloud**, phản hồi tức thì, xác thực logic nghiệp vụ trơn tru trước khi lên Cloud.
+* **☁️ PHẦN B: TRIỂN KHAI PRODUCTION CLOUD (TERRAFORM IaC, GKE, ANSIBLE & JENKINS CI/CD)**
+  * **Mục tiêu:** Tự động hóa toàn bộ việc cấp phát GKE, VM, cài đặt Data Stack qua Ansible và CI/CD qua Jenkins khi đẩy mã nguồn lên GitHub.
+
+---
+
+# 🌟 PHẦN A: TRIỂN KHAI & TEST 100% CỤC BỘ (DATA + AI AGENT + OBSERVABILITY)
+
+```
+[ BƯỚC A1: DOCKER COMPOSE DATA STACK ]
+   MinIO (:9000), Redis (:6379), Trino (:8085), Kafka (:9092), Airflow (:8081)
+                           │
+                           ▼
+[ BƯỚC A2: SINH DỮ LIỆU FEATURE STORE & LAKEHOUSE ]
+   Chạy data_generation ➔ Nạp dữ liệu vào Redis Online Store & MinIO Gold Delta Lake
+                           │
+                           ▼
+[ BƯỚC A3: KHỞI TẠO CỤM K8S KIND CỤC BỘ ]
+   Tạo cụm `agentic-ai` qua `kind-config.yaml` ➔ Load Docker images vào Kind
+                           │
+                           ▼
+[ BƯỚC A4: CÀI ĐẶT HẠ TẦNG OBSERVABILITY STACK (OTEL, JAEGER, GRAFANA) ]
+   OTel Collector (:4317) ➔ Jaeger Tracing (:16686) ➔ Prometheus & Grafana (:8082)
+                           │
+                           ▼
+[ BƯỚC A5: CÀI ĐẶT OPERATORS & LLM-D INFERENCE ENGINE ]
+   KAgent Platform ➔ Gateway API & AgentGateway ➔ vLLM Qwen3-0.6B (Hermes Parser)
+                           │
+                           ▼
+[ BƯỚC A6: KÍCH HOẠT AGENTGATEWAY TRACING POLICY & MODELCONFIG ]
+   Áp dụng agentgateway_policy.yaml (Bắt token LLM) ➔ ModelConfig (timeout: 300)
+                           │
+                           ▼
+[ BƯỚC A7: TRIỂN KHAI MCP SERVERS & COORDINATOR AGENT ]
+   ecom-mcp ➔ drift-mcp (Gắn OTel Trace) ➔ coordinator-agent (Supervisor Pattern)
+                           │
+                           ▼
+[ BƯỚC A8: TEST TOÀN DIỆN: CHATBOT UI + JAEGER TRACING + GRAFANA METRICS ]
+   Chatbot tại :8080 ➔ Xem timeline trên Jaeger :16686 ➔ Xem chỉ số trên Grafana :8082
+```
+
+---
+
+### Bước A1: Khởi Động Tầng Dữ Liệu Bằng Docker Compose
+Toàn bộ Data Stack được định nghĩa sẵn trong thư mục `minicoursework`:
+```bash
+cd /home/nhan/Projects/final_coursework/minicoursework
+
+# 1. Tạo Docker network chia sẻ (nếu chưa có)
+docker network create datahub_network 2>/dev/null || true
+
+# 2. Khởi chạy toàn bộ Data Stack
+docker compose -f docker-compose.yml up -d
+```
+*Kiểm tra các cổng dịch vụ đang hoạt động:*
+* **Redis Feature Store:** `localhost:6379`
+* **MinIO Console UI:** `http://localhost:9001` (User: `admin` / Pass: `password123`)
+* **Trino Query Engine Web UI:** `http://localhost:8085`
+* **Airflow Web UI:** `http://localhost:8081` (User: `airflow` / Pass: `airflow`)
+
+---
+
+### Bước A2: Sinh Dữ Liệu Mẫu Cho Feature Store & Lakehouse
+Sinh dữ liệu mẫu về hồ sơ khách hàng, các chính sách cửa hàng và nạp tính năng thời gian thực (Streaming Features) vào Redis:
+```bash
+# Đứng tại thư mục minicoursework
+# 1. Sinh dữ liệu Batch (khách hàng, đơn hàng, nhãn churn) đẩy lên MinIO
+python3 data_generation/main.py
+
+# 2. Sinh tài liệu tri thức chính sách cửa hàng (RAG Documents) lên MinIO
+python3 data_generation/generate_rag_documents.py
+
+# 3. Nạp dữ liệu Streaming Features thời gian thực (lượt xem 30m, thêm giỏ 30m) vào Redis Feature Store (Port 6379)
+python3 data_generation/generate_stream_features.py
+```
+*(Sau bước này, khách hàng mẫu `CUST_000001` cùng các feature streaming `f_stream_views_30m`, `f_stream_add_to_cart_30m` đã sẵn sàng trong Redis và MinIO).*
+
+---
+
+### Bước A3: Đóng Gói Docker Image FastMCP & Khởi Tạo Cụm K8s Kind
+Chuyển về thư mục dự án `final_llm_agent`:
+```bash
+cd /home/nhan/Projects/final_coursework/final_llm_agent
+
+# 1. Đóng gói Docker Images cho 2 FastMCP Tool Servers (Nếu máy bạn đã build sẵn thì có thể bỏ qua bước này)
+docker build -t nhannguyen2201/ecom-mcp:0.0.1 agentic_ai/ecom-mcp
+docker build -t nhannguyen2201/drift-mcp:0.0.1 agentic_ai/drift-mcp
+
+# 2. Tạo cụm Kubernetes Kind cục bộ (ánh xạ cổng 80 & 443)
+kind create cluster --name agentic-ai --config agentic_ai/kind-config.yaml
+
+# 3. Kiểm tra ngữ cảnh kết nối
+kubectl cluster-info --context kind-agentic-ai
+
+# 4. Nạp 2 Docker Image FastMCP vào cụm Kind (giúp Pod kéo image trực tiếp không cần mạng Internet)
+kind load docker-image nhannguyen2201/ecom-mcp:0.0.1 --name agentic-ai
+kind load docker-image nhannguyen2201/drift-mcp:0.0.1 --name agentic-ai
+```
+
+---
+
+### Bước A4: Cài Đặt Phân Hệ Observability Stack (OTel, Jaeger, Prometheus, Grafana)
+Triển khai hạ tầng giám sát trước để sẵn sàng hứng Logs, Traces và Metrics từ Agent và Gateway:
+```bash
+# 1. Tạo namespace monitoring
+kubectl create ns monitoring --dry-run=client -o yaml | kubectl apply -f -
+
+# 2. Cài đặt OpenTelemetry Collector (Cổng 4317 gRPC / 4318 HTTP)
+# Sử dụng values-local.yaml tinh gọn: Thu nhận Trace/Metrics và đẩy sang Jaeger + Prometheus, không yêu cầu Secret ngoài
+helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+helm upgrade --install opentelemetry-collector open-telemetry/opentelemetry-collector \
+  -n monitoring \
+  -f observability/helm_charts/otel/values-local.yaml
+
+# 3. Cài đặt Jaeger Tracing (Thu thập timeline thực thi phân tán)
+helm repo add jaegertracing https://jaegertracing.github.io/helm-charts
+helm upgrade --install jaeger jaegertracing/jaeger -n monitoring
+
+# 4. Cài đặt Prometheus & Grafana (Giám sát Metrics, RPS, Latency)
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm upgrade --install kube-prometheus-stack oci://ghcr.io/prometheus-community/charts/kube-prometheus-stack \
+  --namespace monitoring \
+  --set prometheus.prometheusSpec.additionalArgs[0].name=web.enable-otlp-receiver \
+  --set prometheus.prometheusSpec.additionalArgs[0].value="" \
+  --set coreDns.enabled=false
+
+# 5. Kiểm tra Pods monitoring khởi động thành công (Running 1/1)
+kubectl get pods -n monitoring
+```
+
+---
+
+### Bước A5: Cài Đặt Nền Tảng KAgent, Gateway API & AgentGateway
+```bash
+# 1. Cài đặt KAgent Operator & UI qua Helm
+helm install kagent-crds oci://ghcr.io/kagent-dev/kagent/helm/kagent-crds     --namespace kagent     --create-namespace
+
+helm upgrade --install kagent oci://ghcr.io/kagent-dev/kagent/helm/kagent     --namespace kagent     --set global.agents.enabled=false
+
+# 2. Cài đặt Gateway API & GAIE CRDs (chuẩn v1-manifests.yaml)
+export GATEWAY_API_VERSION=v1.5.1
+export GAIE_VERSION=v1.5.0
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/${GATEWAY_API_VERSION}/standard-install.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/${GAIE_VERSION}/v1-manifests.yaml
+
+# 3. Cài đặt AgentGateway Operator (với tính năng inferenceExtension)
+export AGENTGATEWAY_VERSION=v1.3.1
+helm upgrade --install agentgateway-crds     oci://cr.agentgateway.dev/charts/agentgateway-crds     --namespace agentgateway-system     --create-namespace     --version ${AGENTGATEWAY_VERSION}
+
+helm upgrade --install agentgateway     oci://cr.agentgateway.dev/charts/agentgateway     --namespace agentgateway-system     --create-namespace     --version ${AGENTGATEWAY_VERSION}     --set inferenceExtension.enabled=true
+```
+
+---
+
+### Bước A6: Triển Khai llm-d Inference Platform & Bật LLM Tracing Policy
+```bash
+export NAMESPACE=llm-d-quickstart
+kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+
+# 1. Tạo Secret HF_TOKEN
+export HF_TOKEN=<YOUR_HUGGINGFACE_TOKEN>
+kubectl create secret generic llm-d-hf-token   --from-literal="HF_TOKEN=${HF_TOKEN}"   --namespace "${NAMESPACE}"   --dry-run=client -o yaml | kubectl apply -f -
+
+# 2. Cấu hình biến môi trường
+export REPO_ROOT="$(pwd)/agentic_ai/llm-d"
+export GUIDE_NAME="optimized-baseline"
+export PROVIDER_NAME=agentgateway
+export ACCELERATOR_TYPE=cpu
+export MODEL_SERVER=vllm
+export ROUTER_GATEWAY_CHART="oci://ghcr.io/llm-d/charts/llm-d-router-gateway"
+export ROUTER_CHART_VERSION="v0.9.0"
+export INFERENCE_GATEWAY_NAME="llm-d-inference-gateway"
+
+# 3. Triển khai AI Gateway
+kubectl apply -k ${REPO_ROOT}/guides/recipes/gateway/agentgateway -n ${NAMESPACE}
+
+# 4. Cài đặt llm-d Router Gateway & HTTPRoute qua Helm
+helm upgrade --install ${GUIDE_NAME} ${ROUTER_GATEWAY_CHART} --version ${ROUTER_CHART_VERSION} \
+    -f ${REPO_ROOT}/guides/recipes/router/base.values.yaml \
+    -f ${REPO_ROOT}/guides/${GUIDE_NAME}/router/${GUIDE_NAME}.values.yaml \
+    --set provider.name=${PROVIDER_NAME} \
+    --set httpRoute.create=true \
+    --set httpRoute.inferenceGatewayName=${INFERENCE_GATEWAY_NAME} \
+    --set router.epp.resources.requests.cpu=500m \
+    --set router.epp.resources.requests.memory=512Mi \
+    --set router.epp.resources.limits.memory=2Gi \
+    -n ${NAMESPACE}
+
+# 5. Khởi chạy ModelServer phục vụ Qwen3-0.6B (vLLM Engine với hermes parser)
+kubectl apply -n ${NAMESPACE} -k ${REPO_ROOT}/guides/${GUIDE_NAME}/modelserver/${ACCELERATOR_TYPE}/${MODEL_SERVER}/
+
+# 6. Chờ vLLM Pod hoàn tất khởi động (READY 1/1)
+kubectl rollout status deployment/${GUIDE_NAME}-${ACCELERATOR_TYPE}-${MODEL_SERVER}-decode -n ${NAMESPACE}
+
+# 7. Kích hoạt LLM Tracing Policy (AgentGateway tự động bắn traces sang OTel Collector)
+kubectl apply -f agentic_ai/agentgateway_policy.yaml
+```
+
+---
+
+### Bước A7: Thiết Lập Cầu Nối Dữ Liệu & Triển Khai FastMCP Servers, Coordinator Agent
+```bash
+# 1. Thiết lập cầu nối mạng nội bộ (DNS Bridge) từ Kind sang Docker Compose Host:
+# Tự động ánh xạ DNS redis-master.data-platform (Port 6379) và trino-coordinator.data-platform (Port 8080 -> Host 8085)
+# giúp FastMCP Server bên trong Kubernetes truy vấn trực tiếp vào Redis/Trino đang chạy trên máy Host.
+bash agentic_ai/apply-local-bridge.sh
+
+# 2. Triển khai ModelConfig (đã cấu hình timeout: 300) & Secret LLM
+kubectl apply -f agentic_ai/model-config/
+
+# 3. Triển khai 2 FastMCP Tool Servers (tự động gắn OpenTelemetry Tracing)
+kubectl apply -f agentic_ai/ecom-mcp/deployments/
+kubectl apply -f agentic_ai/drift-mcp/deployments/
+
+# 4. Triển khai Master Coordinator Agent (Supervisor Pattern)
+kubectl apply -f agentic_ai/coordinator-agent/deployments/
+
+# 5. Kiểm tra toàn bộ Pods trong namespace kagent
+kubectl get pods -n kagent
+```
+
+---
+
+### Bước A8: Test Toàn Diện (Chatbot UI + Jaeger Tracing + Grafana)
+
+#### 1. Trò Chuyện Trực Tiếp Qua KAgent UI:
+```bash
+kubectl port-forward -n kagent svc/kagent-ui 8080:8080
+```
+Truy cập: **`http://localhost:8080`**, chọn agent **`coordinator-agent`** và thử các câu hỏi:
+* **Hỏi hồ sơ mua sắm:** `"Cho tôi xem hồ sơ và lịch sử mua sắm của khách hàng CUST_000001"`
+* **Hỏi trôi lệch dữ liệu:** `"Kiểm tra xem dữ liệu feature f_stream_views_30m có bị drift không?"`
+
+#### 2. Xem Distributed Tracing Trên Jaeger UI:
+```bash
+kubectl port-forward -n monitoring svc/jaeger 16686:16686
+```
+Truy cập: **`http://localhost:16686`** ➔ Chọn service `ecom-mcp`, `drift-mcp` hoặc `llm-d-inference-gateway` ➔ Bạn sẽ thấy toàn bộ dòng thời gian chi tiết: từ lúc AgentGateway nhận câu hỏi, đo số token tiêu thụ, đến lúc MCP Server truy vấn Redis/Trino.
+
+#### 3. Giám Sát Hiệu Năng Trên Grafana:
+```bash
+kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 8082:80
+```
+Truy cập: **`http://localhost:8082`** (User: `admin` / Password: `kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath="{.data.admin-password}" | base64 -d`) để xem biểu đồ hiệu năng hệ thống.
+
+---
+
+# ☁️ PHẦN B: TRIỂN KHAI PRODUCTION CLOUD (TERRAFORM IaC, GKE, ANSIBLE & JENKINS CI/CD)
+
 ## 🏗️ GIAI ĐOẠN 1: CẤP PHÁT HẠ TẦNG BẰNG IaC (TERRAFORM & ANSIBLE)
 
 ### Bước 1: Khởi Tạo Cụm GKE & Máy Ảo VM Bằng Terraform
@@ -109,7 +364,7 @@ helm upgrade --install kagent oci://ghcr.io/kagent-dev/kagent/helm/kagent \
 export GATEWAY_API_VERSION=v1.5.1
 export GAIE_VERSION=v1.5.0
 kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/${GATEWAY_API_VERSION}/standard-install.yaml
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/${GAIE_VERSION}/manifests.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/${GAIE_VERSION}/v1-manifests.yaml
 
 # 2. Cài đặt AgentGateway Operator
 export AGENTGATEWAY_VERSION=v1.3.1
@@ -144,27 +399,45 @@ helm repo add kedacore https://kedacore.github.io/charts
 helm install keda kedacore/keda --namespace keda --create-namespace
 ```
 
-### Bước 9: Triển Khai llm-d ModelServer (vLLM Qwen3-0.6B)
+### Bước 9: Triển Khai llm-d Inference Gateway, Helm Router & ModelServer (vLLM Qwen3-0.6B)
 ```bash
 export NAMESPACE=llm-d-quickstart
 kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
 
-# 1. Tạo Secret HF_TOKEN cho ModelServer
+# 1. Tạo Secret HF_TOKEN cho vLLM
+export HF_TOKEN=<YOUR_HUGGINGFACE_TOKEN>
 kubectl create secret generic llm-d-hf-token \
-    -n ${NAMESPACE} \
-    --from-literal=HF_TOKEN="hf_placeholder" \
-    --dry-run=client -o yaml | kubectl apply -f -
+  --from-literal="HF_TOKEN=${HF_TOKEN}" \
+  --namespace "${NAMESPACE}" \
+  --dry-run=client -o yaml | kubectl apply -f -
 
-# 2. Deploy ModelServer phục vụ Qwen3-0.6B trên CPU
-export REPO_ROOT=/home/nhan/Downloads/agentic_ai/agentic_ai/llm-d
+# 2. Đường dẫn thư mục llm-d đã tích hợp sẵn trong repo (đã fix Qwen3-0.6B + hermes tool parser)
+cd /home/nhan/Projects/final_coursework/final_llm_agent
+export REPO_ROOT="$(pwd)/agentic_ai/llm-d"
 export GUIDE_NAME="optimized-baseline"
+export PROVIDER_NAME=agentgateway
 export ACCELERATOR_TYPE=cpu
 export MODEL_SERVER=vllm
+export ROUTER_GATEWAY_CHART="oci://ghcr.io/llm-d/charts/llm-d-router-gateway"
+export ROUTER_CHART_VERSION="v0.8.0"
+export INFERENCE_GATEWAY_NAME="llm-d-inference-gateway"
 
+# 3. Triển khai AI Gateway (tạo Gateway llm-d-inference-gateway sinh ra baseUrl cho KAgent)
+kubectl apply -k ${REPO_ROOT}/guides/recipes/gateway/agentgateway -n ${NAMESPACE}
+
+# 4. Cài đặt llm-d Router Gateway & HTTPRoute qua Helm
+helm upgrade --install ${GUIDE_NAME} ${ROUTER_GATEWAY_CHART} --version ${ROUTER_CHART_VERSION} \
+    -f ${REPO_ROOT}/guides/recipes/router/base.values.yaml \
+    -f ${REPO_ROOT}/guides/${GUIDE_NAME}/router/${GUIDE_NAME}.values.yaml \
+    --set provider.name=${PROVIDER_NAME} \
+    --set httpRoute.create=true \
+    --set httpRoute.inferenceGatewayName=${INFERENCE_GATEWAY_NAME} \
+    --set resources.requests.cpu=500m \
+    --set resources.requests.memory=512Mi \
+    -n ${NAMESPACE}
+
+# 5. Khởi chạy ModelServer phục vụ Qwen3-0.6B trên CPU (đã cấu hình sẵn patch-vllm.yaml với hermes parser và định mức 4 CPU / 8GiB)
 kubectl apply -n ${NAMESPACE} -k ${REPO_ROOT}/guides/${GUIDE_NAME}/modelserver/${ACCELERATOR_TYPE}/${MODEL_SERVER}/
-
-# 3. Tối ưu hóa định mức CPU/RAM cho máy e2-standard-4 (2 vCPUs / 4GiB)
-kubectl set resources deployment optimized-baseline-cpu-vllm-decode -n ${NAMESPACE} --requests=cpu=2,memory=4Gi --limits=cpu=3,memory=6Gi
 ```
 
 ### Bước 10: Cài Đặt Phân Hệ Observability Stack Bằng Helm (OTel, EFK, Jaeger, Prometheus, Langfuse)
@@ -293,12 +566,11 @@ git push origin main
 
 **Jenkins sẽ tự động thực thi 5 giai đoạn liên hoàn:**
 1. **Stage 1 (Checkout):** Tải commit mới nhất.
-2. **Stage 2 (Test):** Chạy tự động **36 test cases** Pytest (`pytest tests/ -v`).
-3. **Stage 3 (Build & Push):** Đóng gói và đẩy 4 images (`feature-api`, `drift-api`, `ecom-mcp`, `drift-mcp`) lên Docker Hub.
+2. **Stage 2 (Test):** Chạy tự động bộ kiểm thử FastMCP Tools (`pytest tests/ -v`).
+3. **Stage 3 (Build & Push):** Đóng gói và đẩy 2 FastMCP images (`ecom-mcp`, `drift-mcp`) lên Docker Hub.
 4. **Stage 4 (Tag Release):** Gắn Semantic Tag Release (`vX.Y.Z`) lên GitHub.
 5. **Stage 5 (Deploy):** Tự động áp dụng toàn bộ manifests ứng dụng lên K8s:
-   - Triển khai Backend REST APIs & NGINX Ingress (`apps/deployments/`).
-   - Triển khai ModelConfig & AgentGateway (`agentic_ai/model-config/`, `agentgateway-routing.yaml`, `agentgateway_policy.yaml`).
+   - Triển khai ModelConfig & AgentGateway Policy (`agentic_ai/model-config/`, `agentgateway_policy.yaml`).
    - Triển khai FastMCP Servers & Coordinator Agent (`agentic_ai/ecom-mcp/`, `agentic_ai/drift-mcp/`, `agentic_ai/coordinator-agent/`).
    - Zero-Downtime Rollout Restart toàn bộ Pods.
 
@@ -322,7 +594,7 @@ Truy cập: **`http://localhost:8080`** và thử các câu lệnh:
 ```bash
 kubectl port-forward -n monitoring svc/jaeger 16686:16686
 ```
-Truy cập: **`http://localhost:16686`** ➔ Chọn service `ecom-agent-service` hoặc `feature-api` ➔ Xem toàn bộ timeline chi tiết từng mili-giây truy vấn Redis và Trino.
+Truy cập: **`http://localhost:16686`** ➔ Chọn service `ecom-mcp` hoặc `drift-mcp` ➔ Xem toàn bộ timeline chi tiết từng mili-giây truy vấn Redis và Trino.
 
 ---
 
@@ -355,16 +627,16 @@ Truy cập: **`http://localhost:3000`** ➔ Xem chi tiết từng lượt gọi 
 
 ---
 
-### 6. Kiểm Tra Tự Động Co Giãn Tải KEDA & Rate Limiting 10 RPS
+### 6. Kiểm Tra Tự Động Co Giãn Tải KEDA & Ingress Routing
 Lấy Public IP của NGINX Ingress:
 ```bash
 INGRESS_IP=$(kubectl get ingress ecom-agentic-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
-# Gửi 15 request liên tục trong 1 giây để kiểm tra Rate Limiting (10 RPS)
-for i in {1..15}; do curl -s -o /dev/null -w "%{http_code}\n" http://${INGRESS_IP}/api/v1/features/health; done
-# Kết quả: 10 request đầu trả về 200 OK, các request vượt ngưỡng trả về 429 Too Many Requests
+# Kiểm tra định tuyến Ingress tới FastMCP Servers
+curl -s http://${INGRESS_IP}/mcp/ecom
+curl -s http://${INGRESS_IP}/mcp/drift
 
 # Kiểm tra trạng thái KEDA tự động scale Pods từ 1 -> 5 khi tải tăng
 kubectl get scaledobject -A
-kubectl get pods -l app=feature-api -w
+kubectl get pods -n kagent -l app=ecom-mcp -w
 ```

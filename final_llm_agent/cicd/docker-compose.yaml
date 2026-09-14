@@ -8,7 +8,7 @@ services:
     # and security patches.
     pull_policy: always
     ports:
-      - 8081:8080
+      - 8088:8080
       - 50000:50000
     volumes:
       - jenkins_home:/var/jenkins_home

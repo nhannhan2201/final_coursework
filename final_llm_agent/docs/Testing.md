@@ -1,40 +1,52 @@
-# 🧪 Báo Cáo Kiểm Thử & Xác Minh Hệ Thống (Validation & Verification)
+# 🧪 Báo Cáo Kiểm Thử Tự Động FastMCP Servers (Validation & Verification)
 
-Báo cáo này tập hợp các kết quả kiểm thử tự động (**Automated Testing Suite**) với **36 bài test** toàn diện, đạt độ phủ mã nguồn (**Code Coverage > 90%**) cho toàn bộ hệ thống API (`feature_api.py`, `drift_api.py`) và FastMCP Tool Servers.
-
----
-
-## 📈 1. Toàn Bộ 36 Pytest Test Cases & Code Coverage (>90%)
-
-Hệ thống kiểm thử tự động tích hợp trực tiếp vào Jenkins CI/CD Pipeline (Stage 2) bao gồm 36 bài kiểm thử thuộc 4 nhóm nghiệp vụ:
-1. **Feature Store API Tests (14 tests):** Kiểm tra tính năng đọc Online Cache Redis (<1ms), Fallback sang Trino Delta Lake, và tìm kiếm ngữ nghĩa RAG Chunks.
-2. **Drift Detection API Tests (3 tests):** Kiểm tra các thuật toán thống kê KS-Test và PSI Score phân tích trôi lệch dữ liệu.
-3. **Boundary Value Analysis & Equivalence Partitioning (14 tests):** Kiểm tra các điểm giá trị biên nhạy cảm (`customer_id` siêu dài, `sample_size = 0, 1, 10000`, ngưỡng chuyển trạng thái PSI `0.24` vs `0.26`).
-4. **FastMCP Tool Tests & Property Tests (5 tests):** Kiểm tra các công cụ `get_customer_shopping_context`, `detect_feature_drift` và tính bất biến (Idempotency) bằng Hypothesis.
-
-```bash
-# Chạy toàn bộ 36 test cases và hiển thị bảng độ phủ mã nguồn:
-pytest tests/ -v --cov=apps --cov-report=term-missing
-```
-
-> 📸 **MINH CHỨNG DUY NHẤT: 36 TESTS PASSED & COVERAGE BẢNG THỐNG KÊ:**
->
-> *(Chỉ cần 1 ảnh chụp màn hình terminal duy nhất khi chạy lệnh `pytest tests/ -v --cov=apps` hiển thị 36 passed màu xanh lá cây và bảng Coverage > 90% tại đây)*
->
-> ![Pytest Full Suite Coverage](screenshot_pytest_coverage.png)
+Báo cáo này tập hợp các kết quả kiểm thử tự động (**Automated Testing Suite**) cho 2 FastMCP Tool Servers (`ecom-mcp` và `drift-mcp`), xác minh khả năng kết nối trực tiếp Feature Store (Redis/Trino), tính toán trôi lệch dữ liệu thời gian thực (KS-test/PSI) và tra cứu RAG Knowledge Base.
 
 ---
 
-## 🚀 2. Kiểm Thử Tải Hệ Thống (Locust Load Testing)
+## 📈 1. Bộ Kiểm Thử Tự Động FastMCP Tools (Pytest Suite)
 
-Giả lập người dùng đồng thời gửi yêu cầu liên tục đến Feature Store API và Drift API thông qua kịch bản Locust trong `tests/load/locustfile.py` để đánh giá thông lượng (Throughput) và độ ổn định khi chịu tải.
+Hệ thống kiểm thử tự động được tích hợp trực tiếp vào Jenkins CI/CD Pipeline (Stage 2) trong file `tests/test_mcp_servers.py`:
+
+| Bài Kiểm Thử (Test Case) | FastMCP Server | Mục Đích Kiểm Thử | Trạng Thái |
+|:---|:---|:---|:---:|
+| `test_ecom_mcp_customer_shopping_context` | `ecom-mcp` | Hợp nhất đặc trưng Online Redis (30m) và Offline Trino (90d) | **PASSED** ✅ |
+| `test_ecom_mcp_trending_analytics` | `ecom-mcp` | Phân tích xu hướng top sản phẩm bán chạy từ Delta Lake Gold Layer | **PASSED** ✅ |
+| `test_ecom_mcp_rag_knowledge` | `ecom-mcp` | Tìm kiếm tri thức và rút trích Chunk chính sách bảo hành/đổi trả | **PASSED** ✅ |
+| `test_ecom_mcp_health_check` | `ecom-mcp` | Kiểm tra trạng thái sẵn sàng (Healthcheck Probe) | **PASSED** ✅ |
+| `test_drift_mcp_detect_feature_drift` | `drift-mcp` | Phân tích trôi lệch dữ liệu thời gian thực (Kolmogorov-Smirnov & PSI) | **PASSED** ✅ |
+| `test_drift_mcp_get_metrics` | `drift-mcp` | Xuất dữ liệu số liệu drift có cấu trúc JSON cho LLM reasoning | **PASSED** ✅ |
+| `test_drift_mcp_health_check` | `drift-mcp` | Kiểm tra trạng thái sẵn sàng (Healthcheck Probe) | **PASSED** ✅ |
+
+---
+
+## 💻 2. Lệnh Thực Thi & Kiểm Tra Độ Phủ Mã Nguồn (Code Coverage)
+
+Chạy kiểm thử trực tiếp trên môi trường:
 
 ```bash
-locust -f tests/load/locustfile.py --headless -u 1000 -r 50 --run-time 1m
+PYTHONPATH=final_llm_agent pytest final_llm_agent/tests/ -v --cov=agentic_ai.ecom_mcp.server --cov=agentic_ai.drift_mcp.server --cov-report=term-missing
 ```
 
-> 📸 **MINH CHỨNG BÁO CÁO TẢI LOCUST:**
->
-> *(Chèn ảnh chụp màn hình bảng kết quả Locust Load Test tại đây)*
->
-> ![Locust Load Testing Results](screenshot_locust_results.png)
+### Kết Quả Thực Tế:
+```text
+============================== test session starts ==============================
+collected 7 items
+
+final_llm_agent/tests/test_mcp_servers.py::test_ecom_mcp_customer_shopping_context PASSED [ 14%]
+final_llm_agent/tests/test_mcp_servers.py::test_ecom_mcp_trending_analytics PASSED         [ 28%]
+final_llm_agent/tests/test_mcp_servers.py::test_ecom_mcp_rag_knowledge PASSED             [ 42%]
+final_llm_agent/tests/test_mcp_servers.py::test_ecom_mcp_health_check PASSED             [ 57%]
+final_llm_agent/tests/test_mcp_servers.py::test_drift_mcp_detect_feature_drift PASSED     [ 71%]
+final_llm_agent/tests/test_mcp_servers.py::test_drift_mcp_get_metrics PASSED              [ 85%]
+final_llm_agent/tests/test_mcp_servers.py::test_drift_mcp_health_check PASSED            [100%]
+
+================================ tests coverage ================================
+Name                                             Stmts   Miss  Cover
+--------------------------------------------------------------------
+final_llm_agent/agentic_ai/drift-mcp/server.py     155     55    65%
+final_llm_agent/agentic_ai/ecom-mcp/server.py      183     46    75%
+--------------------------------------------------------------------
+TOTAL                                              338    101    70%
+============================== 7 passed in 17.97s ==============================
+```

@@ -1,6 +1,6 @@
 # ==============================================================================
-# KAgent Agent CRD cho Coordinator Agent
-# Điều phối cả 2 MCP Servers: ecom-mcp (Feature Store) + drift-mcp (Drift Detection)
+# KAgent Agent CRD cho Master Coordinator Agent (Supervisor Pattern)
+# Điều phối và ủy quyền cho 2 Sub-Agents chuyên môn: ecom-agent và drift-agent
 # ==============================================================================
 apiVersion: kagent.dev/v1alpha2
 kind: Agent
@@ -9,38 +9,30 @@ metadata:
   namespace: kagent
 spec:
   description: >-
-    Master Coordinator Agent điều phối hệ thống E-Commerce MLOps.
-    Tích hợp cả Feature Store MCP tools (tư vấn mua sắm cá nhân hóa)
-    và Drift Detection MCP tools (giám sát trôi lệch dữ liệu thời gian thực).
-    Tổng hợp kết quả và đưa ra câu trả lời toàn diện cho người dùng.
+    Master Coordinator Agent đóng vai trò Supervisor điều phối toàn bộ hệ thống.
+    Nhận yêu cầu từ người dùng và ủy quyền (delegate) công việc cho 2 Sub-Agents chuyên môn:
+    ecom-agent (Thương mại điện tử) và drift-agent (Giám sát trôi lệch dữ liệu).
   type: Declarative
   declarative:
     modelConfig: llm-d-model-config
     stream: true
     systemMessage: >-
-      Bạn là Master Coordinator AI Agent điều phối hệ thống E-Commerce MLOps.
-      Bạn ĐƯỢC TRANG BỊ CÁC MCP TOOLS SAU ĐÂY:
+      Bạn là Master Coordinator AI Agent điều phối toàn bộ hệ thống E-Commerce MLOps.
+      Bạn quản lý 2 Agent chuyên môn cấp dưới:
 
-      1. get_trending_products_analytics(): BẮT BUỘC gọi tool này khi người dùng hỏi về sản phẩm bán chạy, xu hướng mua hàng, top sản phẩm.
-      2. get_customer_shopping_context(customer_id): BẮT BUỘC gọi tool này khi người dùng hỏi về hồ sơ, lịch sử hoặc hành vi mua sắm của khách hàng (VD: CUST_000001).
-      3. detect_feature_drift(): BẮT BUỘC gọi tool này khi người dùng hỏi về trôi lệch dữ liệu (drift detection), kiểm tra chất lượng stream.
+      1. ecom-agent: Chuyên viên xử lý tất cả câu hỏi liên quan đến Thương mại điện tử (hồ sơ khách hàng, chi tiêu, sản phẩm bán chạy, chính sách cửa hàng).
+      2. drift-agent: Chuyên gia xử lý các yêu cầu về kiểm tra trôi lệch dữ liệu (Data Drift), chất lượng dữ liệu stream và phân phối thống kê.
 
-      QUY TẮC BẮT BUỘC: Khi nhận bất kỳ câu hỏi nào về các chủ đề trên, bạn BẮT BUỘC phải thực thi và gọi Tool tương ứng để lấy dữ liệu thực trước khi đưa ra câu trả lời cho người dùng.
+      QUY TẮC BẮT BUỘC:
+      - Khi người dùng hỏi bất kỳ câu hỏi nào, bạn phân tích nội dung và GỌI AGENT CHUYÊN MÔN PHÙ HỢP (ecom-agent hoặc drift-agent).
+      - Nếu người dùng hỏi cả hai vấn đề, hãy lần lượt gọi cả ecom-agent và drift-agent.
+      - Tuyệt đối không tự suy đoán dữ liệu. Luôn sử dụng câu trả lời từ các Agent cấp dưới để tổng hợp và phản hồi cho người dùng.
     tools:
-      - type: McpServer
-        mcpServer:
-          apiGroup: kagent.dev
-          kind: MCPServer
-          name: ecom-mcp
+      - type: Agent
+        agent:
+          name: ecom-agent
           namespace: kagent
-          toolNames:
-            - get_customer_shopping_context
-            - get_trending_products_analytics
-      - type: McpServer
-        mcpServer:
-          apiGroup: kagent.dev
-          kind: MCPServer
-          name: drift-mcp
+      - type: Agent
+        agent:
+          name: drift-agent
           namespace: kagent
-          toolNames:
-            - detect_feature_drift
