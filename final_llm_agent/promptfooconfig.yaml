@@ -12,9 +12,9 @@ prompts:
 providers:
   - id: "openai:chat:Qwen/Qwen3-0.6B"
     config:
-      apiBaseUrl: "${AI_GATEWAY_URL:-http://127.0.0.1:8880/v1}"
       apiKey: "dummy-key"
       temperature: 0.1
+      max_tokens: 150
 
 # 3. Các ca kiểm thử tự động (Test Cases & Assertions)
 tests:

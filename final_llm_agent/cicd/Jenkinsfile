@@ -21,10 +21,11 @@ pipeline {
         GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
         
         // Cấu hình kết nối Langfuse Cloud và AI Gateway phục vụ kiểm định Prompt
-        LANGFUSE_PUBLIC_KEY = 'pk-lf-e8d2c02c-4fdf-4ff3-83f1-f09623e1fdf9'
-        LANGFUSE_SECRET_KEY = 'sk-lf-775f6fdb-a2d5-45a8-9d41-5c396655cba5'
+        LANGFUSE_PUBLIC_KEY = 'pk-lf-e8d2c02c-d404-4e43-9fff-c725ddfdcb21'
+        LANGFUSE_SECRET_KEY = 'sk-lf-775f6fdb-b840-4383-ade3-9a044226bd82'
         LANGFUSE_HOST = 'https://cloud.langfuse.com'
-        AI_GATEWAY_URL = 'http://agentic-ai-control-plane:32257/v1'
+        OPENAI_BASE_URL = 'http://agentic-ai-control-plane:32257/v1'
+        OPENAI_API_KEY = 'dummy-key'
     }
 
     stages {
@@ -62,7 +63,8 @@ pipeline {
                     export LANGFUSE_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY}"
                     export LANGFUSE_SECRET_KEY="${LANGFUSE_SECRET_KEY}"
                     export LANGFUSE_HOST="${LANGFUSE_HOST}"
-                    export AI_GATEWAY_URL="${AI_GATEWAY_URL}"
+                    export OPENAI_BASE_URL="${OPENAI_BASE_URL}"
+                    export OPENAI_API_KEY="${OPENAI_API_KEY}"
                     
                     promptfoo eval --no-cache
                 '''
