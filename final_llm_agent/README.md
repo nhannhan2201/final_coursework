@@ -356,7 +356,7 @@ Dự án cung cấp 8 tài liệu kỹ thuật chuyên sâu nằm trong thư m�
 3. **[Định Tuyến AI Gateway & Policies (`docs/agentgateway_routing.md`)](./docs/agentgateway_routing.md):** Cấu hình Envoy AgentGateway (K8s Gateway API v1), HTTPRoute phân tải và AgentgatewayPolicy thu thập traces.
 4. **[Giám Sát Toàn Diện — OTel, Jaeger, Prometheus & Grafana (`docs/observability.md`)](./docs/observability.md):** Báo cáo OTel Collector telemetry hub, Jaeger distributed traces, Prometheus metrics và Grafana dashboards.
 5. **[Báo Cáo Kiểm Thử Tự Động & Prompt Quality Gate (`docs/Testing.md`)](./docs/Testing.md):** Báo cáo kết quả kiểm thử tự động Pytest cho FastMCP tools, độ phủ code coverage và kiểm chuẩn tự động Promptfoo qua Gateway.
-6. **[Báo Cáo CI/CD Automation — Jenkins Pipeline (`docs/cicd.md`)](./docs/cicd.md):** Quy trình 5 giai đoạn Jenkins Declarative Pipeline, Docker Hub Semantic Tagging và Zero-Downtime Rolling Update.
+6. **[Báo Cáo CI/CD Automation — Jenkins Pipeline (`docs/cicd.md`)](./docs/cicd.md):** Quy trình 6 giai đoạn Jenkins Declarative Pipeline, Docker Hub Semantic Tagging và Zero-Downtime Rolling Update.
 7. **[Mẫu Thiết Kế Phần Mềm Sử Dụng (`docs/design_patterns.md`)](./docs/design_patterns.md):** Ứng dụng Strategy Pattern (Data Drift KS/PSI), Adapter Pattern (Feature Store Redis/Trino) và Supervisor Pattern (Coordinator).
 8. **[Quản Lý Bí Mật & Bảo Mật Sandbox (`docs/security_secrets.md`)](./docs/security_secrets.md):** Quản lý mã bí mật tập trung qua Kubernetes Secrets, RBAC và SecurityContext Sandbox (`runAsNonRoot: true`, `readOnlyRootFilesystem: true`).
 

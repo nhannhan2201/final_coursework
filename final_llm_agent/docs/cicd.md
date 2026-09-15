@@ -12,23 +12,25 @@ Jenkins Server được triển khai thông qua Docker Compose ([cicd/docker-com
 
 ---
 
-## 🔄 2. Quy Trình 5 Giai Đoạn Trong `Jenkinsfile`
+## 🔄 2. Quy Trình 6 Giai Đoạn Trong `Jenkinsfile`
 
-Pipeline tự động hóa được định nghĩa trong [cicd/Jenkinsfile](file:///home/nhan/Projects/final_coursework/final_llm_agent/cicd/Jenkinsfile) gồm 5 giai đoạn:
+Pipeline tự động hóa được định nghĩa trong [cicd/Jenkinsfile](file:///home/nhan/Projects/final_coursework/final_llm_agent/cicd/Jenkinsfile) gồm 6 giai đoạn:
 
 ```mermaid
 graph LR
     A[1. Checkout SCM] --> B[2. Run Pytest Suite]
-    B --> C[3. Build & Push Docker Images]
-    C --> D[4. Semantic Tag Release vX.Y.Z]
-    D --> E[5. Zero-Downtime K8s Rolling Deploy]
+    B --> C[3. Prompt Quality Eval]
+    C --> D[4. Build & Push 2 Docker Images]
+    D --> E[5. Semantic Tag Release vX.Y.Z]
+    E --> F[6. Zero-Downtime K8s Rolling Deploy]
 ```
 
-1. **Stage 1: Checkout SCM:** Tự động clone mã nguồn từ GitHub repository khi có commit mới.
-2. **Stage 2: Run Pytest Suite:** Chạy 7 bài kiểm thử tự động cho `ecom-mcp` và `drift-mcp`, yêu cầu độ phủ coverage đạt chuẩn.
-3. **Stage 3: Build & Push Images:** Đóng gói container images cho `nhannguyen2201/ecom-mcp` và `nhannguyen2201/drift-mcp`, đẩy lên Docker Hub.
-4. **Stage 4: Semantic Tag Release:** Tự động gắn tag phiên bản `vX.Y.Z` lên GitHub Release.
-5. **Stage 5: Zero-Downtime Deploy:** Cập nhật các deployment trên cụm Kubernetes theo cơ chế Rolling Update không gián đoạn dịch vụ.
+1. **Stage 1: Checkout SCM:** Tự động clone mã nguồn mới nhất từ GitHub repository khi có commit mới.
+2. **Stage 2: Run Pytest Suite:** Chạy các bài kiểm thử tự động cho `ecom-mcp` và `drift-mcp`, yêu cầu độ phủ coverage đạt chuẩn.
+3. **Stage 3: Prompt Quality Evaluation:** Kiểm định chất lượng prompt bằng bộ công cụ `promptfoo` kết nối AI Gateway (`:32257/v1`) và Langfuse Cloud.
+4. **Stage 4: Build & Push 2 Images:** Đóng gói container images cho 2 FastMCP servers (`nhannguyen2201/ecom-mcp` và `nhannguyen2201/drift-mcp`), đẩy lên Docker Hub.
+5. **Stage 5: Semantic Tag Release:** Tự động gắn tag phiên bản `vX.Y.Z` lên GitHub Release và tag Docker images.
+6. **Stage 6: Zero-Downtime Deploy:** Bơm image tag mới vào các manifests `mcp-server.yaml` và áp dụng lên cụm Kubernetes theo cơ chế Rolling Update không gián đoạn dịch vụ.
 
 ---
 

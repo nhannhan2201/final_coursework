@@ -1,6 +1,6 @@
 # 🔄 Hướng Dẫn Triển Khai & Vận Hành CI/CD Pipeline (Jenkins & Kubernetes)
 
-Tài liệu hướng dẫn chi tiết quy trình thiết lập, cấu hình và vận hành hệ thống **Tích hợp và Triển khai liên tục (CI/CD)** sử dụng **Jenkins Declarative Pipeline** và **Kubernetes** theo đúng chuẩn bài lab tham khảo.
+Tài liệu hướng dẫn chi tiết quy trình thiết lập, cấu hình và vận hành hệ thống **Tích hợp và Triển khai liên tục (CI/CD)** sử dụng **Jenkins Declarative Pipeline** và **Kubernetes** theo đúng 100% mã nguồn thực tế triển khai trong dự án.
 
 ---
 
@@ -9,134 +9,104 @@ Tài liệu hướng dẫn chi tiết quy trình thiết lập, cấu hình và 
 ```text
 cicd/
 ├── custom_jenkins/
-│   ├── Dockerfile                 # Custom Jenkins Image (Docker CLI, Helm 3, gcloud CLI, K8s Plugins)
+│   ├── Dockerfile                 # Custom Jenkins Image (Docker CLI, kubectl, Python, Promptfoo, Git)
 │   └── entrypoint.sh              # Tự động cấp quyền /var/run/docker.sock
 ├── build_custom_jenkins.sh        # Script build custom image nhannguyen2201/jenkins:lts
-├── docker-compose.yaml            # Khởi chạy Jenkins Server (:8081:8080)
-├── imgs/                          # Hình ảnh minh chứng thiết lập Credentials
-├── Jenkinsfile                    # Jenkins Declarative Pipeline 5 giai đoạn hoàn chỉnh
+├── docker-compose.yaml            # Khởi chạy Jenkins Server (:8088:8080 & :50000)
+├── imgs/                          # Hình ảnh minh chứng thiết lập Credentials trong Jenkins
+├── jenkins-kubeconfig.yaml        # Kubeconfig cấp quyền RBAC kết nối cụm K8s
+├── Jenkinsfile                    # Jenkins Declarative Pipeline tự động hóa 6 giai đoạn
 └── README.md                      # Hướng dẫn chi tiết
 ```
 
 ---
 
-## 🚀 2. Hướng Dẫn Khởi Chạy Jenkins Server Cục Bộ
+## 🚀 2. Khởi Chạy Jenkins Server Cục Bộ
 
-### Bước 1: Build Custom Jenkins Image (Nếu Cần)
+### Bước 1: Khởi Chạy Jenkins Bằng Docker Compose
 ```bash
-bash cicd/build_custom_jenkins.sh
-```
-
-### Bước 2: Khởi Chạy Jenkins Bằng Docker Compose
-```bash
+cd final_llm_agent
 docker compose -f cicd/docker-compose.yaml up -d
 ```
+Container `jenkins` chạy trên cổng **`8088`** (ánh xạ từ container port `8080`).
 
-### Bước 3: Lấy Mật Khẩu Khởi Tạo `initialAdminPassword`
+### Bước 2: Lấy Mật Khẩu Khởi Tạo `initialAdminPassword` (Nếu Lần Đầu Thiết Lập)
 ```bash
 docker exec -it jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 ```
-*Truy cập giao diện web tại:* **`http://localhost:8081`** (hoặc `http://<IP_VM>:8081`).
+*Truy cập giao diện web tại:* **`http://localhost:8088`**.
 
 ---
 
-## ☸️ 3. Cấu Hình Phân Quyền RBAC & Kubeconfig Cho Jenkins Trên Kubernetes
+## ☸️ 3. Cấu Hình Phân Quyền RBAC & Kubeconfig Cho Jenkins
 
-Để Jenkins có quyền triển khai ứng dụng lên cụm Kubernetes, cần tạo ServiceAccount `jenkins` với quyền cluster-admin:
+Để Jenkins có quyền triển khai và cập nhật Pods trên cụm Kubernetes, cấu hình file `kubeconfig` cấp quyền cho ServiceAccount `jenkins` kết nối API Server Kubernetes:
 
 ```bash
-# 1. Tạo ServiceAccount cho Jenkins trong namespace default
-kubectl create serviceaccount jenkins -n default
-
-# 2. Gán quyền cluster-admin cho ServiceAccount jenkins
-kubectl create clusterrolebinding jenkins --clusterrole=cluster-admin --serviceaccount=default:jenkins
-
-# 3. Tạo Secret Token dài hạn cho Jenkins
-kubectl apply -f - <<EOF
-apiVersion: v1
-kind: Secret
-metadata:
-  name: jenkins-token
-  namespace: default
-  annotations:
-    kubernetes.io/service-account.name: jenkins
-type: kubernetes.io/service-account-token
-EOF
-```
-
-### Lấy Token & Tạo File `kubeconfig` Cho Jenkins:
-```bash
-# Lấy Token đã giải mã Base64
-TOKEN=$(kubectl get secret jenkins-token -n default -o jsonpath='{.data.token}' | base64 -d)
-
-# Lấy CA Data từ kubeconfig hiện tại
-CA_DATA=$(kubectl config view --raw --minify --flatten -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')
-SERVER_URL=$(kubectl config view --raw --minify --flatten -o jsonpath='{.clusters[0].cluster.server}')
-
-# Lưu cấu hình sau vào file kubeconfig:
-cat <<EOF > kubeconfig
-apiVersion: v1
-kind: Config
-clusters:
-- cluster:
-    server: ${SERVER_URL}
-    certificate-authority-data: ${CA_DATA}
-  name: k8s-cluster
-contexts:
-- context:
-    cluster: k8s-cluster
-    user: jenkins
-  name: k8s-cluster
-current-context: k8s-cluster
-users:
-- name: jenkins
-  user:
-    token: ${TOKEN}
-EOF
+# Áp dụng ServiceAccount và ClusterRoleBinding
+kubectl apply -f cicd/jenkins-kubeconfig.yaml
 ```
 
 ---
 
 ## 🔐 4. Thiết Lập Thông Tin Xác Thực (Jenkins Credentials)
 
-Vào **Jenkins Dashboard ➔ Manage Jenkins ➔ Credentials ➔ System ➔ Global credentials (unrestricted)**:
-
-![Jenkins Credentials](./imgs/jenkins_credentials.png)
+Vào **Jenkins Dashboard ➔ Manage Jenkins ➔ Credentials ➔ System ➔ Global credentials**:
 
 1. **GitHub Credentials (`github`):**
    - *Kind:* Username with password
-   - *Username:* `<Tên GitHub của bạn>`
-   - *Password:* GitHub Personal Access Token (PAT) có quyền `repo` và `admin:repo_hook`.
+   - *Username:* `nhannhan2201`
+   - *Password:* GitHub Personal Access Token (PAT) có quyền `repo`.
    - *ID:* `github`
-   ![GitHub PAT](./imgs/github_pat.png)
-   ![GitHub Creds](./imgs/github_credentials.png)
 
 2. **Docker Hub Credentials (`dockerhub`):**
    - *Kind:* Username with password
    - *Username:* `nhannguyen2201`
    - *Password:* Docker Hub PAT / Token
    - *ID:* `dockerhub`
-   ![Docker Hub Creds](./imgs/dockerhub_credentials.png)
 
 3. **Kubernetes Kubeconfig (`kubeconfig`):**
    - *Kind:* Secret file
-   - *File:* Chọn file `kubeconfig` vừa tạo ở trên.
+   - *File:* File `kubeconfig` kết nối cụm Kubernetes cục bộ.
    - *ID:* `kubeconfig`
 
 ---
 
-## 🔄 5. Quy Trình 5 Giai Đoạn Trong `Jenkinsfile`
+## 🔄 5. Quy Trình 6 Giai Đoạn Trong `Jenkinsfile`
+
+Toàn bộ luồng tự động hóa được khai báo chi tiết trong file [`Jenkinsfile`](./Jenkinsfile):
 
 ```mermaid
 graph LR
-    A[1. Checkout SCM] --> B[2. Run Pytest 36 Tests]
-    B --> C[3. Build & Push Docker Images]
-    C --> D[4. Semantic Tag Release vX.Y.Z]
-    D --> E[5. Zero-Downtime K8s Rollout]
+    A[1. Checkout SCM] --> B[2. Pytest MCP Suite]
+    B --> C[3. Promptfoo Quality Eval]
+    C --> D[4. Build & Push 2 MCP Images]
+    D --> E[5. Semantic Tag Release vX.Y.Z]
+    E --> F[6. Deploy K8s Rollout]
 ```
 
-1. **Stage 1 (Checkout):** Tải mã nguồn mới nhất theo commit hash ngắn (`GIT_COMMIT_SHORT`).
-2. **Stage 2 (Test):** Kích hoạt môi trường thực thi tự động chạy toàn bộ **36 Pytest test cases** (`pytest tests/ -v --cov=apps`).
-3. **Stage 3 (Build & Push):** Đóng gói song song 4 Docker Images (`feature-api`, `drift-api`, `ecom-mcp`, `drift-mcp`) và đẩy lên Docker Hub Registry với tag `${GIT_COMMIT_SHORT}` và `latest`.
-4. **Stage 4 (Tag Release):** Tự động phân tích commit messages (`feat!`, `feat:`, `fix:`) để tăng version theo chuẩn Semantic Versioning (`vX.Y.Z`), gắn git tag và đẩy lên GitHub.
-5. **Stage 5 (Deploy):** Kết nối K8s qua `kubeconfig`, áp dụng manifests và thực hiện `kubectl rollout restart` đảm bảo **Zero-Downtime Deployment**.
+1. **Stage 1 (Checkout SCM):** Tải mã nguồn mới nhất từ nhánh `feature` theo commit hash ngắn (`GIT_COMMIT_SHORT`).
+2. **Stage 2 (Automated Test):** Kích hoạt môi trường chạy tự động các bài kiểm thử FastMCP Tools (`pytest final_llm_agent/tests/ -v`).
+3. **Stage 3 (Prompt Quality Evaluation):** Sử dụng `promptfoo` đánh giá chất lượng prompt qua AI Gateway (`:32257/v1`) đối chuẩn ngữ nghĩa và schema JSON, tích hợp Langfuse Cloud.
+4. **Stage 4 (Build & Push Docker Images):** Đóng gói **2 container images** cho các FastMCP Tool Servers:
+   - `nhannguyen2201/ecom-mcp:${GIT_COMMIT_SHORT}`
+   - `nhannguyen2201/drift-mcp:${GIT_COMMIT_SHORT}`
+   Sau đó đẩy trực tiếp lên Docker Hub Registry.
+5. **Stage 5 (Semantic Tag Release):** Tự động phân tích lịch sử commit (`feat!`, `feat:`, `fix:`) để bump phiên bản theo chuẩn Semantic Versioning (`vX.Y.Z`), gắn Git Tag lên GitHub và đẩy tag mới lên Docker Hub.
+6. **Stage 6 (Full System Deployment to Kubernetes):** Bơm Image Tag phiên bản mới (`${targetTag}`) vào các file YAML `mcp-server.yaml` và thực thi `kubectl apply` để cập nhật FastMCP Servers và KAgent Declarative Agents lên cụm Kubernetes.
+
+---
+
+## 📸 6. Minh Chứng Thực Thi Thành Công
+
+> 📸 **PIPELINE THỰC THI THÀNH CÔNG TRÊN JENKINS:**
+>
+> ![Jenkins Pipeline Success](../docs/screenshot_jenkins_pipeline.png)
+
+> 📸 **2 CONTAINER IMAGES ĐƯỢC ĐÓNG GÓI VÀ ĐẨY LÊN DOCKER HUB:**
+>
+> ![Docker Hub Repositories](../docs/screenshot_dockerhub_repos.png)
+
+> 📸 **PHIÊN BẢN PHÁT HÀNH SEMANTIC RELEASE TRÊN GITHUB:**
+>
+> ![GitHub Releases](../docs/screenshot_github_releases.png)
