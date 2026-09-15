@@ -10,7 +10,7 @@ Dự án xây dựng hệ thống **Multi-Agent AI chuẩn Kubernetes-native**, 
 3. [Danh Sách Multi-Agent & FastMCP Tool Servers](#3-danh-sách-multi-agent--fastmcp-tool-servers)
 4. [Hướng Dẫn Khởi Chạy Hệ Thống Từ A-Z (Quickstart Guide)](#4-hướng-dẫn-khởi-chạy-hệ-thống-từ-a-z-quickstart-guide)
 5. [Kiểm Thử Chất Lượng & Truy Cập Các Giao Diện Giám Sát](#5-kiểm-thử-chất-lượng--truy-cập-các-giao-diện-giám-sát)
-6. [Danh Mục 12 Báo Cáo Kỹ Thuật Chi Tiết](#6-danh-mục-12-báo-cáo-kỹ-thuật-chi-tiết)
+6. [Danh Mục 8 Báo Cáo Kỹ Thuật Chuyên Sâu](#6-danh-mục-8-báo-cáo-kỹ-thuật-chuyên-sâu-technical-deep-dive-reports)
 
 ---
 
