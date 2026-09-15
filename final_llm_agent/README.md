@@ -27,7 +27,7 @@ Dự án xây dựng hệ thống **Multi-Agent AI chuẩn Kubernetes-native**, 
 | **Distributed SQL Engine** | **Trino SQL Engine** | Truy vấn phân tán SQL trên định dạng Delta Lake Parquet (:8085) phục vụ tra cứu lịch sử 90 ngày và mẫu chuẩn kiểm định trôi lệch. |
 | **Lakehouse Object Storage** | **MinIO S3 & Delta Lake** | Kho lưu trữ đối tượng chuẩn S3 (:9000/:9001) lưu trữ bảng dữ liệu phân tầng Bronze ➔ Silver ➔ Gold (`feat_customer_unified`). |
 | **Streaming & Batch ETL** | **Apache Kafka & Airflow** | Kafka (:9092) thu thập CDC clickstream thời gian thực; Airflow & PySpark (:8081) chạy pipeline tổng hợp dữ liệu lịch sử định kỳ. |
-| **Observability Hub** | **OTel Collector, Jaeger, Prometheus, Grafana** | Gom toàn bộ Spans và Metrics qua OTLP gRPC (:4317), hiển thị Distributed Tracing (:16686), lưu trữ chỉ số (:9090) và vẽ Dashboards (:3000). |
+| **Observability Hub** | **OTel Collector, Jaeger, Prometheus, Grafana** | Gom toàn bộ Spans và Metrics qua OTLP gRPC (:4317), hiển thị Distributed Tracing (:16686), lưu trữ chỉ số (:9090) và vẽ Dashboards (:8082). |
 | **Cloud LLMOps Tracing** | **Langfuse Cloud** | Quản lý cây Trace phân cấp (LLM Generation + Tool Spans) và lưu trữ Prompt phiên bản Production (`cloud.langfuse.com`). |
 | **Prompt Quality Gate** | **Promptfoo** | Kiểm thử tự động (Cosine similarity & JSON schema validation) đối chuẩn qua Gateway NodePort (:32257) trước khi triển khai. |
 | **CI/CD Pipeline** | **Jenkins Pipeline** | Tự động hóa kiểm thử mã nguồn Pytest, kiểm tra chất lượng Promptfoo, Semantic Tagging và triển khai cập nhật lên cụm K8s. |
@@ -84,7 +84,7 @@ Sơ đồ kiến trúc tổng thể thể hiện rõ ranh giới giữa **Tầng
     `promptfoo` thực thi bộ test suite tự động kiểm tra độ tương đồng ngữ nghĩa (Cosine similarity) và định dạng JSON schema đối chuẩn trực tiếp qua Gateway NodePort (:32257).
 14. **(14) Cơ Sở Dữ Liệu Chỉ Số & Trực Quan Hóa (Metrics & Dashboards):**  
     * **(14a)** `OTel Collector` đẩy metric đo lường qua `otlphttp/prometheus` vào **Prometheus Server** (:9090).
-    * **(14b)** **Grafana Dashboards** (:3000 / :8082) kết nối vào Prometheus Datasource bằng ngôn ngữ PromQL để vẽ biểu đồ tài nguyên máy, dung lượng ổ đĩa, throughput và thời gian đáp ứng mô hình.
+    * **(14b)** **Grafana Dashboards** (:8082) kết nối vào Prometheus Datasource bằng ngôn ngữ PromQL để vẽ biểu đồ tài nguyên máy, dung lượng ổ đĩa, throughput và thời gian đáp ứng mô hình.
 
 ---
 
