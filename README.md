@@ -65,38 +65,17 @@ Hệ thống tích hợp toàn diện quy trình kỹ thuật dữ liệu (**Dat
 │   ├── jars/                           # Flink Kafka Connector JAR
 │   └── feature_store/                  # Feast Feature Store Repository
 │
-├── final_llm_agent/                    # PHẦN 2: KUBERNETES AI AGENT & MLOPS INFRASTRUCTURE
-│   │
-│   ├── 📂 agentic_ai/                  # [1] Phân hệ Multi-Agent & llm-d (Chuẩn Downloads/agentic_ai)
-│   │   ├── model-config/               # ModelConfig CRD & LLM Secret dùng chung
-│   │   ├── ecom-mcp/                   # FastMCP Server E-Commerce (server.py, Dockerfile, deployments/)
-│   │   ├── drift-mcp/                  # FastMCP Server Drift Detection (server.py, Dockerfile, deployments/)
-│   │   ├── coordinator-agent/          # Coordinator Declarative Agent CRD
-│   │   ├── agentgateway-routing.yaml   # AgentGateway & HTTPRoute
-│   │   ├── agentgateway_policy.yaml    # AgentGateway Telemetry Policy
-│   │   ├── notebooks/                  # Demo Notebooks (agent_demo.ipynb)
-│   │   └── README.md
-│   │
-│   ├── 📂 observability/               # [2] Phân hệ Observability (Chuẩn Downloads/observability)
-│   │   ├── helm_charts/                # Values Helm cho otel, kibana, langfuse
-│   │   ├── imgs/                       # Minh chứng Langfuse API keys & metadata
-│   │   ├── grafana_dashboards/         # agent_observability.json (5 Panels)
-│   │   └── README.md
-│   │
-│   ├── 📂 apps/                        # [3] Phân hệ Backend REST APIs (FastAPI)
-│   │   ├── feature_api.py              # Feature Store REST API
-│   │   ├── drift_api.py                # Real-time Drift Detection API
-│   │   ├── telemetry.py                # OpenTelemetry Instrumentation
-│   │   └── deployments/                # K8s Deployments cho feature-api, drift-api, ingress
-│   │
-│   ├── 📂 cicd/                        # [4] Phân hệ CI/CD (Chuẩn Downloads/cicd)
-│   │   ├── Jenkinsfile                 # Jenkins Declarative Pipeline (5 Stages)
-│   ├── 📂 iac/                         # [5] Phân hệ IaC (Terraform & Ansible)
-│   ├── 📂 tests/                       # [6] Bộ kiểm thử tự động (Unit, Property, Load)
-│   ├── 📂 docs/                        # [7] Toàn bộ 12 Báo Cáo Kỹ Thuật
+├── final_llm_agent/                    # PHẦN 2: KUBERNETES MULTI-AGENT & MLOPS INFRASTRUCTURE
+│   ├── agentic_ai/                     # Phân hệ Multi-Agent & llm-d Serving (FastMCP Tools & KAgent CRDs)
+│   ├── observability/                  # Phân hệ Observability (OTel Collector, Jaeger, Prometheus, Grafana)
+│   ├── cicd/                           # Phân hệ CI/CD (Jenkinsfile & docker-compose)
+│   ├── iac/                            # Phân hệ IaC (Terraform GKE & Ansible VM)
+│   ├── tests/                          # Bộ kiểm thử tự động Pytest cho FastMCP tools
+│   ├── docs/                           # 9 Báo Cáo Kỹ Thuật & Master Architecture Diagram (PNG/PDF)
+│   ├── promptfooconfig.yaml            # Cấu hình Prompt Quality Gate
 │   ├── pytest.ini                      # Cấu hình Pytest
 │   ├── HUONG_DAN_CHAY.md               # Hướng dẫn chạy từng bước toàn diện
-│   └── README.md                       # Hướng dẫn chi tiết
+│   └── README.md                       # Master Documentation & Workflow Guide
 │
 ├── pytest.ini                          # Root Pytest config
 └── README.md                           # Báo cáo tổng hợp toàn hệ thống
@@ -104,27 +83,8 @@ Hệ thống tích hợp toàn diện quy trình kỹ thuật dữ liệu (**Dat
 
 ---
 
-## 🚀 Hướng Dẫn Khởi Chạy Nhanh (Quickstart)
+## 🚀 Hướng Dẫn Vận Hành Hệ Thống
 
-Vui lòng xem chi tiết toàn bộ 5 giai đoạn triển khai tại tài liệu: **[HUONG_DAN_CHAY.md](file:///home/nhan/Projects/final_coursework/final_llm_agent/HUONG_DAN_CHAY.md)**.
-
-### 1. Chạy Bộ Kiểm Thử Tự Động Toàn Diện (36 Tests)
-```bash
-pytest -v
-```
-
-### 2. Triển Khai Nền Tảng K8s & Observability (Helm)
-```bash
-# 1. Cài đặt NGINX Ingress, KAgent Platform, AgentGateway, KEDA
-# (Xem chi tiết Giai đoạn 2 trong HUONG_DAN_CHAY.md)
-
-# 2. Cài đặt Observability Stack (OTel, EFK, Jaeger, Prometheus/Grafana, Langfuse)
-# (Xem chi tiết Bước 10 trong HUONG_DAN_CHAY.md)
-```
-
-### 3. Triển Khai Ứng Dụng Tự Động Bằng Jenkins CI/CD
-```bash
-git add .
-git commit -m "feat: deploy entire ecommerce ai agent and mlops system"
-git push origin main
-```
+Để xem sơ đồ kiến trúc tổng thể, luồng vận hành chi tiết và hướng dẫn chạy toàn bộ hệ thống từ đầu (From Scratch), vui lòng xem trực tiếp:
+👉 **[TÀI LIỆU MASTER README (final_llm_agent/README.md)](./final_llm_agent/README.md)**  
+hoặc **[HƯỚNG DẪN TRIỂN KHAI TOÀN DIỆN (HUONG_DAN_CHAY.md)](./final_llm_agent/HUONG_DAN_CHAY.md)**.

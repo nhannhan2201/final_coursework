@@ -44,6 +44,7 @@ gcp-key.json
 *.sln
 *.swp
 
-# OS temporary files
-.DS_Store
-Thumbs.db
+# Temporary scratch files
+final_llm_agent/scratch/
+scratch/
+minicoursework/ollama_storage/
