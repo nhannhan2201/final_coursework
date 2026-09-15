@@ -69,12 +69,10 @@ Hệ thống tích hợp toàn diện quy trình kỹ thuật dữ liệu (**Dat
 │   ├── agentic_ai/                     # Phân hệ Multi-Agent & llm-d Serving (FastMCP Tools & KAgent CRDs)
 │   ├── observability/                  # Phân hệ Observability (OTel Collector, Jaeger, Prometheus, Grafana)
 │   ├── cicd/                           # Phân hệ CI/CD (Jenkinsfile & docker-compose)
-│   ├── iac/                            # Phân hệ IaC (Terraform GKE & Ansible VM)
 │   ├── tests/                          # Bộ kiểm thử tự động Pytest cho FastMCP tools
-│   ├── docs/                           # 9 Báo Cáo Kỹ Thuật & Master Architecture Diagram (PNG/PDF)
+│   ├── docs/                           # 8 Báo Cáo Kỹ Thuật & Master Architecture Diagram (PNG/PDF)
 │   ├── promptfooconfig.yaml            # Cấu hình Prompt Quality Gate
 │   ├── pytest.ini                      # Cấu hình Pytest
-│   ├── HUONG_DAN_CHAY.md               # Hướng dẫn chạy từng bước toàn diện
 │   └── README.md                       # Master Documentation & Workflow Guide
 │
 ├── pytest.ini                          # Root Pytest config
@@ -86,5 +84,4 @@ Hệ thống tích hợp toàn diện quy trình kỹ thuật dữ liệu (**Dat
 ## 🚀 Hướng Dẫn Vận Hành Hệ Thống
 
 Để xem sơ đồ kiến trúc tổng thể, luồng vận hành chi tiết và hướng dẫn chạy toàn bộ hệ thống từ đầu (From Scratch), vui lòng xem trực tiếp:
-👉 **[TÀI LIỆU MASTER README (final_llm_agent/README.md)](./final_llm_agent/README.md)**  
-hoặc **[HƯỚNG DẪN TRIỂN KHAI TOÀN DIỆN (HUONG_DAN_CHAY.md)](./final_llm_agent/HUONG_DAN_CHAY.md)**.
+👉 **[TÀI LIỆU MASTER README (final_llm_agent/README.md)](./final_llm_agent/README.md)**.
