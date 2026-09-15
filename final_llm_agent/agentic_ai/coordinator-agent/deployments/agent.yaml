@@ -1,0 +1,38 @@
+# ==============================================================================
+# KAgent Agent CRD cho Master Coordinator Agent (Supervisor Pattern)
+# Điều phối và ủy quyền cho 2 Sub-Agents chuyên môn: ecom-agent và drift-agent
+# ==============================================================================
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: coordinator-agent
+  namespace: kagent
+spec:
+  description: >-
+    Master Coordinator Agent đóng vai trò Supervisor điều phối toàn bộ hệ thống.
+    Nhận yêu cầu từ người dùng và ủy quyền (delegate) công việc cho 2 Sub-Agents chuyên môn:
+    ecom-agent (Thương mại điện tử) và drift-agent (Giám sát trôi lệch dữ liệu).
+  type: Declarative
+  declarative:
+    modelConfig: llm-d-model-config
+    stream: true
+    systemMessage: >-
+      Bạn là Master Coordinator AI Agent điều phối toàn bộ hệ thống E-Commerce MLOps.
+      Bạn quản lý 2 Agent chuyên môn cấp dưới:
+
+      1. ecom-agent: Chuyên viên xử lý tất cả câu hỏi liên quan đến Thương mại điện tử (hồ sơ khách hàng, chi tiêu, sản phẩm bán chạy, chính sách cửa hàng).
+      2. drift-agent: Chuyên gia xử lý các yêu cầu về kiểm tra trôi lệch dữ liệu (Data Drift), chất lượng dữ liệu stream và phân phối thống kê.
+
+      QUY TẮC BẮT BUỘC:
+      - Khi người dùng hỏi bất kỳ câu hỏi nào, bạn phân tích nội dung và GỌI AGENT CHUYÊN MÔN PHÙ HỢP (ecom-agent hoặc drift-agent).
+      - Nếu người dùng hỏi cả hai vấn đề, hãy lần lượt gọi cả ecom-agent và drift-agent.
+      - Tuyệt đối không tự suy đoán dữ liệu. Luôn sử dụng câu trả lời từ các Agent cấp dưới để tổng hợp và phản hồi cho người dùng.
+    tools:
+      - type: Agent
+        agent:
+          name: ecom-agent
+          namespace: kagent
+      - type: Agent
+        agent:
+          name: drift-agent
+          namespace: kagent

@@ -1,0 +1,32 @@
+# ==============================================================================
+# KAgent Agent CRD cho E-Commerce Specialist Agent (ecom-agent)
+# Agent chuyên trách lĩnh vực Thương mại điện tử: tìm kiếm khách hàng, sản phẩm, chính sách
+# ==============================================================================
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: ecom-agent
+  namespace: kagent
+spec:
+  description: >-
+    E-Commerce Specialist Agent chuyên xử lý tất cả các câu hỏi liên quan đến
+    thương mại điện tử: hồ sơ mua sắm khách hàng, sản phẩm bán chạy, và chính sách cửa hàng.
+  type: Declarative
+  declarative:
+    modelConfig: llm-d-model-config
+    stream: true
+    systemMessage: >-
+      Bạn là E-Commerce Specialist Agent, chuyên viên tư vấn thương mại điện tử.
+      QUY TẮC BẮT BUỘC:
+      Khi nhận câu hỏi về khách hàng, sản phẩm bán chạy hoặc chính sách bán hàng,
+      bạn BẮT BUỘC phải gọi công cụ search_ecommerce_data(query) để tìm kiếm thông tin thực tế trước khi trả lời.
+      Sau khi có kết quả từ tool, hãy tóm tắt và trả lời người dùng một cách lịch sự, rõ ràng.
+    tools:
+      - type: McpServer
+        mcpServer:
+          apiGroup: kagent.dev
+          kind: MCPServer
+          name: ecom-mcp
+          namespace: kagent
+          toolNames:
+            - search_ecommerce_data

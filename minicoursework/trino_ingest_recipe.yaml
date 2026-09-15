@@ -1,0 +1,12 @@
+source:
+  type: trino
+  config:
+    host_port: ecom_trino:8080
+    username: admin
+    catalog: delta
+    classification:
+      enabled: false
+sink:
+  type: datahub-rest
+  config:
+    server: http://datahub-gms:8080

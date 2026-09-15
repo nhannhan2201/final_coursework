@@ -1,0 +1,32 @@
+# ==============================================================================
+# KAgent Agent CRD cho Drift Detection Specialist Agent (drift-agent)
+# Agent chuyên trách giám sát trôi lệch dữ liệu (Data Drift)
+# ==============================================================================
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: drift-agent
+  namespace: kagent
+spec:
+  description: >-
+    Drift Detection Specialist Agent chuyên giám sát chất lượng dữ liệu và
+    phát hiện trôi lệch dữ liệu (Data Drift) giữa luồng streaming và dữ liệu lịch sử chuẩn.
+  type: Declarative
+  declarative:
+    modelConfig: llm-d-model-config
+    stream: true
+    systemMessage: >-
+      Bạn là Drift Detection Specialist Agent, chuyên gia giám sát chất lượng dữ liệu.
+      QUY TẮC BẮT BUỘC:
+      Khi nhận câu hỏi về trôi lệch dữ liệu, kiểm tra chất lượng stream hoặc drift,
+      bạn BẮT BUỘC phải gọi công cụ check_data_drift(feature_name) để tính toán thống kê (KS-test và PSI).
+      Dựa vào kết quả trả về, giải thích rõ ràng xem dữ liệu có bị trôi lệch hay ổn định.
+    tools:
+      - type: McpServer
+        mcpServer:
+          apiGroup: kagent.dev
+          kind: MCPServer
+          name: drift-mcp
+          namespace: kagent
+          toolNames:
+            - check_data_drift

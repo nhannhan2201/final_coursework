@@ -1,0 +1,29 @@
+# ==============================================================================
+# KMCP MCPServer CRD cho E-Commerce Feature Store MCP Tool
+# Deploy FastMCP server dưới dạng Kubernetes-native MCP Server
+# ==============================================================================
+apiVersion: kagent.dev/v1alpha1
+kind: MCPServer
+metadata:
+  name: ecom-mcp
+  namespace: kagent
+spec:
+  transportType: http
+  deployment:
+    image: nhannguyen2201/ecom-mcp:0.0.1
+    imagePullPolicy: IfNotPresent
+    port: 8000
+    env:
+      REDIS_HOST: "redis-master.data-platform.svc.cluster.local"
+      REDIS_PORT: "6379"
+      TRINO_HOST: "trino-coordinator.data-platform.svc.cluster.local"
+      TRINO_PORT: "8080"
+      TRINO_USER: "admin"
+      TRINO_CATALOG: "delta"
+      TRINO_SCHEMA: "gold"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://opentelemetry-collector.monitoring.svc.cluster.local:4317"
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
+      OTEL_SERVICE_NAME: "ecom-mcp"
+  httpTransport:
+    targetPort: 8000
+    path: /mcp

@@ -1,0 +1,186 @@
+// ==============================================================================
+// Jenkins Declarative Pipeline cho E-Commerce MLOps & AI Agent System
+// Chuẩn hóa theo kiến trúc CI/CD Pipeline tự động hóa 100% (Mục 1.9 FSDS)
+// Luồng hoạt động: 
+// Push Git ➔ Pytest (MCP Tools) ➔ Prompt Quality Eval (Promptfoo + Langfuse)
+// ➔ Build & Push Docker Images ➔ Semantic Tag Release ➔ Deploy Toàn Bộ Lên K8s
+// ==============================================================================
+pipeline {
+    agent any
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '5', daysToKeepStr: '5'))
+        timestamps()
+        timeout(time: 30, unit: 'MINUTES')
+        disableConcurrentBuilds()
+    }
+
+    environment {
+        registry = 'nhannguyen2201'
+        registryCredential = 'dockerhub'
+        GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+        
+        // Cấu hình kết nối Langfuse Cloud và AI Gateway phục vụ kiểm định Prompt
+        LANGFUSE_PUBLIC_KEY = 'pk-lf-e8d2c02c-d404-4e43-9fff-c725ddfdcb21'
+        LANGFUSE_SECRET_KEY = 'sk-lf-775f6fdb-b840-4383-ade3-9a044226bd82'
+        LANGFUSE_HOST = 'https://cloud.langfuse.com'
+        OPENAI_BASE_URL = 'http://agentic-ai-control-plane:32257/v1'
+        OPENAI_API_KEY = 'dummy-key'
+    }
+
+    stages {
+        // ----------------------------------------------------------------------
+        // GIAI ĐOẠN 1: TẢI MÃ NGUỒN TỪ GIT REPOSITORY
+        // ----------------------------------------------------------------------
+        stage('1. Checkout') {
+            steps {
+                echo "📥 Đang kéo mã nguồn mới nhất tại commit: ${env.GIT_COMMIT_SHORT}..."
+                checkout scm
+            }
+        }
+
+        // ----------------------------------------------------------------------
+        // GIAI ĐOẠN 2: KIỂM THỬ TỰ ĐỘNG LOGIC FASTMCP (PYTEST TEST SUITE)
+        // ----------------------------------------------------------------------
+        stage('2. Automated Test') {
+            steps {
+                echo '🧪 Đang thực thi bộ kiểm thử tự động cho các FastMCP Servers...'
+                sh '''
+                    export PYTHONPATH=final_llm_agent
+                    pytest final_llm_agent/tests/ -v
+                '''
+            }
+        }
+
+        // ----------------------------------------------------------------------
+        // GIAI ĐOẠN 3: KIỂM ĐỊNH CHẤT LƯỢNG PROMPT (PROMPTFOO & LANGFUSE CLOUD)
+        // ----------------------------------------------------------------------
+        stage('3. Prompt Quality Evaluation') {
+            steps {
+                echo '🤖 Đang kiểm định chất lượng Prompt với Promptfoo & Langfuse Cloud...'
+                sh '''
+                    cd final_llm_agent
+                    export LANGFUSE_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY}"
+                    export LANGFUSE_SECRET_KEY="${LANGFUSE_SECRET_KEY}"
+                    export LANGFUSE_HOST="${LANGFUSE_HOST}"
+                    export OPENAI_BASE_URL="${OPENAI_BASE_URL}"
+                    export OPENAI_API_KEY="${OPENAI_API_KEY}"
+                    
+                    promptfoo eval --no-cache
+                '''
+            }
+        }
+
+        // ----------------------------------------------------------------------
+        // GIAI ĐOẠN 4: ĐÓNG GÓI DOCKER IMAGES & ĐẨY LÊN DOCKER HUB REGISTRY
+        // ----------------------------------------------------------------------
+        stage('4. Build & Push Docker Images') {
+            steps {
+                script {
+                    echo "🐳 Đang đóng gói 2 Docker Images cho FastMCP Servers (ecom-mcp và drift-mcp)..."
+                    
+                    def ecomMcpImg  = docker.build("${registry}/ecom-mcp:${env.GIT_COMMIT_SHORT}",  "-f final_llm_agent/agentic_ai/ecom-mcp/Dockerfile final_llm_agent/agentic_ai/ecom-mcp")
+                    def driftMcpImg = docker.build("${registry}/drift-mcp:${env.GIT_COMMIT_SHORT}", "-f final_llm_agent/agentic_ai/drift-mcp/Dockerfile final_llm_agent/agentic_ai/drift-mcp")
+
+                    echo '🚀 Đang đẩy FastMCP Docker Images lên kho chứa Docker Hub...'
+                    docker.withRegistry('', registryCredential) {
+                        ecomMcpImg.push()
+                        driftMcpImg.push()
+
+                        if (env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'master' || env.BRANCH_NAME == null) {
+                            ecomMcpImg.push('latest')
+                            driftMcpImg.push('latest')
+                        }
+                    }
+                }
+            }
+        }
+
+        // ----------------------------------------------------------------------
+        // GIAI ĐOẠN 5: ĐÁNH DẤU PHIÊN BẢN (SEMANTIC VERSIONING RELEASE)
+        // ----------------------------------------------------------------------
+        stage('5. Semantic Tag Release') {
+            steps {
+                script {
+                    def latestTag = sh(
+                        script: "git describe --tags --abbrev=0 2>/dev/null || echo ''",
+                        returnStdout: true
+                    ).trim()
+                    def logRange = latestTag ? "${latestTag}..HEAD" : "HEAD"
+                    def commits = sh(script: "git log ${logRange} --pretty=%s", returnStdout: true).trim()
+
+                    def bumpType = 'patch'
+                    if (commits.contains('feat!'))      bumpType = 'major'
+                    else if (commits.contains('feat:')) bumpType = 'minor'
+
+                    def baseTag = latestTag ?: 'v0.0.0'
+                    def (major, minor, patch) = baseTag.replaceAll('^v', '').tokenize('.')
+                    def newTag
+                    if (bumpType == 'major')      newTag = "v${major.toInteger() + 1}.0.0"
+                    else if (bumpType == 'minor') newTag = "v${major}.${minor.toInteger() + 1}.0"
+                    else                          newTag = "v${major}.${minor}.${patch.toInteger() + 1}"
+
+                    echo "📌 Đánh tag phiên bản mới: ${bumpType} → ${newTag}"
+                    withCredentials([usernamePassword(credentialsId: 'github', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
+                        sh """
+                            git config user.email "jenkins@ci"
+                            git config user.name "Jenkins CI"
+                            git tag -a ${newTag} -m 'Release ${newTag} [ci skip]' || true
+                            REPO=\$(git remote get-url origin | sed 's|https://[^@]*@github.com/||' | sed 's|https://github.com/||')
+                            git remote set-url origin https://\${GIT_USER}:\${GIT_TOKEN}@github.com/\${REPO}
+                            git push origin ${newTag} || true
+                        """
+                    }
+                    docker.withRegistry('', registryCredential) {
+                        docker.image("${registry}/ecom-mcp:${env.GIT_COMMIT_SHORT}").push(newTag)
+                        docker.image("${registry}/drift-mcp:${env.GIT_COMMIT_SHORT}").push(newTag)
+                    }
+                    env.IMAGE_TAG = newTag
+                }
+            }
+        }
+
+        // ----------------------------------------------------------------------
+        // GIAI ĐOẠN 6: TỰ ĐỘNG TRIỂN KHAI TOÀN BỘ HỆ THỐNG LÊN KUBERNETES (CD)
+        // ----------------------------------------------------------------------
+        stage('6. Full System Deployment to Kubernetes') {
+            steps {
+                script {
+                    echo '☸️ Đang tự động triển khai toàn bộ hệ thống lên Kubernetes Cluster...'
+                    def targetTag = env.IMAGE_TAG ?: env.GIT_COMMIT_SHORT
+                    echo "🚀 Đang triển khai các FastMCP Servers với Image Tag: ${targetTag}"
+
+                    withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                        sh """
+                            # 1. Tự động bơm Tag phiên bản mới (${targetTag}) vào các file YAML của FastMCP
+                            sed -i "s|nhannguyen2201/ecom-mcp:.*|nhannguyen2201/ecom-mcp:${targetTag}|g" final_llm_agent/agentic_ai/ecom-mcp/deployments/mcp-server.yaml
+                            sed -i "s|nhannguyen2201/drift-mcp:.*|nhannguyen2201/drift-mcp:${targetTag}|g" final_llm_agent/agentic_ai/drift-mcp/deployments/mcp-server.yaml
+
+                            # 2. Triển khai ModelConfig & Tracing Policy cho AI Gateway
+                            kubectl apply -f final_llm_agent/agentic_ai/model-config/
+                            kubectl apply -f final_llm_agent/agentic_ai/agentgateway_policy.yaml
+
+                            # 3. Triển khai FastMCP Servers với Image Tag mới & KAgent Declarative Agents
+                            kubectl apply -f final_llm_agent/agentic_ai/ecom-mcp/deployments/
+                            kubectl apply -f final_llm_agent/agentic_ai/drift-mcp/deployments/
+                            kubectl apply -f final_llm_agent/agentic_ai/coordinator-agent/deployments/
+                        """
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo '🧹 Dọn dẹp Workspace sau khi hoàn tất...'
+            cleanWs()
+        }
+        success {
+            echo '🎉 TOÀN BỘ JENKINS PIPELINE ĐÃ CHẠY THÀNH CÔNG RẠNG RỠ! HỆ THỐNG AGENT ĐÃ SẴN SÀNG SỬ DỤNG!'
+        }
+        failure {
+            echo '❌ PIPELINE THẤT BẠI - VUI LÒNG KIỂM TRA LẠI LOGS!'
+        }
+    }
+}

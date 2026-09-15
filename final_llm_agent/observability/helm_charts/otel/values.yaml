@@ -1,0 +1,85 @@
+mode: deployment
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+  tag: "0.100.0"
+
+command:
+  name: otelcol-contrib
+
+extraEnvs:
+  - name: ES_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: elasticsearch-es-elastic-user
+        key: elastic
+
+  # Use the following command to generate secret
+  # kubectl create secret generic langfuse-otel-auth -n monitoring \
+  # --from-literal=basicAuth="$(printf '%s' 'pk-lf-e3d6acb3-fd55-4590-a2e7-6fb7c666f7db:sk-lf-6b9e5dbe-114b-42bd-9e98-8fa87f99c68f' | base64 -w0)" \
+  # --dry-run=client -o yaml | kubectl apply -f -
+  # Please follow README.md to generate your own key pair and replace the above values with your own.
+  - name: LANGFUSE_AUTH_BASE64
+    valueFrom:
+      secretKeyRef:
+        name: langfuse-otel-auth
+        key: basicAuth
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc: {}
+        http: {}
+
+  processors:
+    batch: {}
+
+  exporters:
+    debug:
+      verbosity: detailed
+
+    otlp/jaeger:
+      endpoint: jaeger.monitoring.svc.cluster.local:4317
+      tls:
+        insecure: true
+
+    otlphttp/langfuse:
+      # https://agentgateway.dev/docs/kubernetes/latest/integrations/llm-observability/langfuse/
+      endpoint: http://langfuse-web.monitoring.svc.cluster.local:3000/api/public/otel
+      headers:
+        Authorization: "Basic ${env:LANGFUSE_AUTH_BASE64}"
+
+    otlphttp/prometheus:
+      endpoint: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090/api/v1/otlp
+
+    elasticsearch:
+      endpoints:
+        - https://elasticsearch-es-http.monitoring.svc.cluster.local:9200
+      tls:
+        insecure_skip_verify: true
+      user: elastic
+      password: ${env:ES_PASSWORD}
+
+  service:
+    telemetry:
+      metrics:
+        level: none
+      logs:
+        level: info
+
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [batch]
+        exporters: [otlp/jaeger, otlphttp/langfuse]
+
+      metrics:
+        receivers: [otlp]
+        processors: [batch]
+        exporters: [otlphttp/prometheus]
+
+      logs:
+        receivers: [otlp]
+        processors: [batch]
+        exporters: [elasticsearch, debug]

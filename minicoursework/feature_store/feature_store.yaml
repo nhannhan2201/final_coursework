@@ -1,0 +1,14 @@
+project: ecom_mlops_feature_store
+# Sổ cái (Registry) quản lý Metadata của Feast sẽ lưu tại đây
+registry: data/registry.db
+provider: local
+
+# 1. KHO NÓNG (ONLINE STORE)
+online_store:
+  type: redis
+  connection_string: "localhost:6379"
+
+# 2. KHO LẠNH (OFFLINE STORE)
+# Do ta dùng Delta Lake trên MinIO, nên sẽ dùng spark làm engine đọc offline
+offline_store:
+  type: spark

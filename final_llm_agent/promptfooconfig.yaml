@@ -1,0 +1,33 @@
+# ==============================================================================
+# Promptfoo Evaluation Configuration (Mục 1.9 FSDS)
+# Tự động kéo Prompt từ Langfuse Cloud và kiểm thử chất lượng qua AI Gateway
+# ==============================================================================
+description: "E-Commerce Agent Prompt & Tool Quality Evaluation"
+
+# 1. Kéo Prompt trực tiếp từ Langfuse Cloud với nhãn production
+prompts:
+  - "langfuse://ecom-agent-system-prompt:production"
+
+# 2. Nhà cung cấp mô hình (Trỏ trực tiếp vào AI Gateway nội bộ qua port 8880)
+providers:
+  - id: "openai:chat:Qwen/Qwen3-0.6B"
+    config:
+      apiKey: "dummy-key"
+      temperature: 0.1
+      max_tokens: 150
+
+# 3. Các ca kiểm thử tự động (Test Cases & Assertions)
+tests:
+  - description: "TC-01: Kiểm tra khả năng nhận diện gọi Tool tra cứu khách hàng"
+    vars:
+      query: "CUST_000001"
+    assert:
+      - type: contains
+        value: "search_ecommerce_data"
+
+  - description: "TC-02: Kiểm tra khả năng gọi Tool khi hỏi sản phẩm bán chạy"
+    vars:
+      query: "sản phẩm bán chạy nhất hiện nay"
+    assert:
+      - type: contains
+        value: "search_ecommerce_data"
